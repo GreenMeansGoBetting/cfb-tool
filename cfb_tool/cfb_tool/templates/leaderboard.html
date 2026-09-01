@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Player Leaderboards{% endblock %}
+{% block content %}
+<h1>Player Leaderboards</h1>
+
+<form class="filter-bar" method="get">
+  <label>Season:
+    <select name="season" onchange="this.form.submit()">
+      {% for s in seasons %}
+      <option value="{{ s }}" {% if s == selected_season %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Category:
+    <select name="category" onchange="this.form.submit()">
+      {% for c in ["passing", "rushing", "receiving"] %}
+      <option value="{{ c }}" {% if c == category %}selected{% endif %}>{{ c | capitalize }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Stat:
+    <select name="stat_type" onchange="this.form.submit()">
+      {% for st in ["YDS", "TD", "ATT", "CAR", "REC", "INT"] %}
+      <option value="{{ st }}" {% if st == stat_type %}selected{% endif %}>{{ st }}</option>
+      {% endfor %}
+    </select>
+  </label>
+</form>
+
+{% if rows %}
+<table class="data-table">
+  <thead><tr><th>#</th><th>Player</th><th>Team</th><th>{{ stat_type }}</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ r.player_name }}</td>
+      <td>{{ r.team_name }}</td>
+      <td>{{ r.stat_value | round(0) }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No data for this combination yet — try a different season, category, or stat, or run the ingest script.</p>
+{% endif %}
+{% endblock %}

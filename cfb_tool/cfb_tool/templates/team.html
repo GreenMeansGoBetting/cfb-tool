@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{{ team.school }}{% endblock %}
+{% block content %}
+<h1>{{ team.school }}</h1>
+<p class="sub">{{ team.conference or "Independent" }}{% if team.division %} &middot; {{ team.division }}{% endif %}</p>
+
+<div class="two-col">
+  <section>
+    <h2>Coaching History</h2>
+    {% if coaches %}
+    <table class="data-table">
+      <thead><tr><th>Season</th><th>Coach</th><th>Role</th></tr></thead>
+      <tbody>
+      {% for c in coaches %}
+        <tr>
+          <td>{{ c.season }}</td>
+          <td>{{ c.first_name }} {{ c.last_name }}</td>
+          <td>{{ c.role }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No coaching history loaded yet.</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>Top Players (season)</h2>
+    {% if top_players %}
+    <table class="data-table">
+      <thead><tr><th>Player</th><th>Category</th><th>Stat</th><th>Value</th></tr></thead>
+      <tbody>
+      {% for p in top_players %}
+        <tr>
+          <td>{{ p.player_name }}</td>
+          <td>{{ p.category }}</td>
+          <td>{{ p.stat_type }}</td>
+          <td>{{ p.stat_value | round(0) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No player stats loaded yet.</p>
+    {% endif %}
+  </section>
+</div>
+
+<section>
+  <h2>Games</h2>
+  {% if games %}
+  <table class="data-table">
+    <thead><tr><th>Season</th><th>Week</th><th>Matchup</th><th>Score</th></tr></thead>
+    <tbody>
+    {% for g in games %}
+      <tr>
+        <td>{{ g.season }}</td>
+        <td>{{ g.week }}</td>
+        <td>{{ g.away_school }} @ {{ g.home_school }}</td>
+        <td>
+          {% if g.home_points is not none %}
+            {{ g.away_points }} - {{ g.home_points }}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No games loaded yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

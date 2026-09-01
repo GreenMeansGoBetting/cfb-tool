@@ -1,0 +1,14 @@
+# Generated data — rebuilt locally by running ingest.py, not hand-edited
+cfb_tool/cfb_tool/db/cfb.db
+
+# Redundant archive of the code already tracked here
+cfb_tool.zip
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS cruft
+.DS_Store
+Thumbs.db

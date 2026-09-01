@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Teams{% endblock %}
+{% block content %}
+<h1>Teams</h1>
+
+<form class="filter-bar" method="get">
+  <label>Conference:
+    <select name="conference" onchange="this.form.submit()">
+      <option value="">All</option>
+      {% for c in conferences %}
+      <option value="{{ c }}" {% if c == selected_conf %}selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+    </select>
+  </label>
+</form>
+
+<table class="data-table">
+  <thead><tr><th>School</th><th>Conference</th><th>Division</th></tr></thead>
+  <tbody>
+  {% for t in teams %}
+    <tr>
+      <td><a href="/team/{{ t.team_id }}">{{ t.school }}</a></td>
+      <td>{{ t.conference or "—" }}</td>
+      <td>{{ t.division or "—" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

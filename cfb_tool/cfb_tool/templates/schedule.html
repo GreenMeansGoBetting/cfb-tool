@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Schedule{% endblock %}
+{% block content %}
+
+{% if not team_count %}
+<section class="empty-state">
+  <h2>No data loaded yet</h2>
+  <p>Run the ingest script to pull data from CollegeFootballData.com:</p>
+  <pre>export CFBD_API_KEY="your_key_here"
+python3 ingest.py --year 2026</pre>
+  <p>Get a free key at <a href="https://collegefootballdata.com/key">collegefootballdata.com/key</a>.</p>
+</section>
+{% else %}
+
+<div class="filter-bar">
+  <form method="get" class="week-form">
+    <label>Season
+      <select name="season" onchange="this.form.submit()">
+        {% for s in seasons %}
+        <option value="{{ s }}" {% if s == season %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Week
+      <select name="week" onchange="this.form.submit()">
+        {% for w in weeks %}
+        <option value="{{ w }}" {% if w == week %}selected{% endif %}>Week {{ w }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+  <form method="get" class="sensitivity-form">
+    <input type="hidden" name="season" value="{{ season }}">
+    <input type="hidden" name="week" value="{{ week }}">
+    <label>Flag sensitivity
+      <select name="sensitivity" onchange="this.form.submit()">
+        <option value="loose" {% if sensitivity == "loose" %}selected{% endif %}>Loose</option>
+        <option value="medium" {% if sensitivity == "medium" %}selected{% endif %}>Medium</option>
+        <option value="strict" {% if sensitivity == "strict" %}selected{% endif %}>Strict</option>
+      </select>
+    </label>
+  </form>
+  <input type="text" id="teamSearch" placeholder="Find a team…" class="search-input">
+</div>
+
+<h1>Week {{ week }} Schedule<span class="muted sub-count"> &middot; {{ games | length }} games &middot; {{ star_count }} top matchup{{ "" if star_count == 1 else "s" }} this week</span></h1>
+
+{% if games %}
+<div class="schedule-list" id="scheduleList">
+  {% for g in games %}
+  <a href="/game/{{ g.game_id }}" class="schedule-row" data-teams="{{ g.away_school|lower }} {{ g.home_school|lower }}">
+    <div class="row-main">
+      <div class="matchup-teams">
+        {% if g.star %}<span class="star" title="Top matchup — see the flags on the matchup card">★</span>{% endif %}
+        <span class="team-name">{{ g.away_school }}</span>
+        <span class="at">@</span>
+        <span class="team-name">{{ g.home_school }}</span>
+      </div>
+      {% if g.moniker %}<div class="moniker">{{ g.moniker }}</div>{% endif %}
+    </div>
+    <div class="kickoff" data-utc="{{ g.start_date }}">{{ g.start_date }}</div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<p class="muted">No FBS games scheduled for this week.</p>
+{% endif %}
+
+{% endif %}
+
+<script>
+  // Render each kickoff in the viewer's own local time zone.
+  document.querySelectorAll('.kickoff[data-utc]').forEach(function (el) {
+    var d = new Date(el.getAttribute('data-utc'));
+    if (isNaN(d)) return;
+    el.textContent = d.toLocaleString(undefined, {
+      weekday: 'short', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit'
+    });
+  });
+
+  var search = document.getElementById('teamSearch');
+  if (search) {
+    search.addEventListener('input', function () {
+      var q = search.value.trim().toLowerCase();
+      document.querySelectorAll('#scheduleList .schedule-row').forEach(function (row) {
+        row.style.display = row.getAttribute('data-teams').includes(q) ? '' : 'none';
+      });
+    });
+  }
+</script>
+{% endblock %}

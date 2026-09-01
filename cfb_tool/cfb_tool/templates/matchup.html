@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}{{ game.away_school }} @ {{ game.home_school }}{% endblock %}
+{% block content %}
+
+{% macro fmt(val, decimals=1) -%}
+  {%- if val is none -%}—{%- else -%}{{ (("%." ~ decimals ~ "f") % val) }}{%- endif -%}
+{%- endmacro %}
+
+{% macro pctval(val) -%}
+  {%- if val is none -%}—{%- else -%}{{ "%.0f"|format(val) }}%{%- endif -%}
+{%- endmacro %}
+
+{% macro gm(n) -%}
+  {%- set n = n or 0 -%}{{ n }} game{{ "" if n == 1 else "s" }}
+{%- endmacro %}
+
+{% macro sprating(rating, ranking) -%}
+  {%- if rating is none -%}—{%- else -%}{{ "%.1f"|format(rating) }}{% if ranking %} (#{{ ranking }} nat'l){% endif %}{%- endif -%}
+{%- endmacro %}
+
+{% macro sos_line(ctx, side) -%}
+  {%- if not ctx or ctx.games == 0 -%}
+    no games played yet this season
+  {%- else -%}
+    {%- set rank = ctx.avg_def_rank if side == 'offense' else ctx.avg_off_rank -%}
+    opponents faced ({{ gm(ctx.games) }}): average {{ 'defense' if side == 'offense' else 'offense' }} SP+ rank {{ rank if rank is not none else "—" }} nationally
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro blend_note(ctx) -%}
+  {%- if ctx.is_blended -%}
+    {%- if ctx.games == 0 -%}
+      no games yet this season — based on last season{% if ctx.returning_pct is not none %}, {{ "%.0f"|format(ctx.returning_pct * 100) }}% production returning{% endif %}
+    {%- else -%}
+      {{ gm(ctx.games) }} this season, blended with last season ({{ "%.0f"|format(ctx.prior_weight * 100) }}% weight on last year{% if ctx.returning_pct is not none %}, {{ "%.0f"|format(ctx.returning_pct * 100) }}% production returning{% endif %})
+    {%- endif -%}
+  {%- else -%}
+    {{ gm(ctx.games) }} this season
+  {%- endif -%}
+{%- endmacro %}
+
+<a href="/?season={{ game.season }}&week={{ game.week }}" class="back-link">&larr; Back to schedule</a>
+
+<h1>{{ game.away_school }} @ {{ game.home_school }}</h1>
+<p class="sub">
+  <span class="kickoff" data-utc="{{ game.start_date }}">{{ game.start_date }}</span>
+  {% if game.venue %} &middot; {{ game.venue }}{% endif %}
+  {% if game.home_points is not none %} &middot; Final: {{ game.away_school }} {{ game.away_points }} – {{ game.home_school }} {{ game.home_points }}{% endif %}
+</p>
+
+{% set has_flags = flags.away or flags.home or flags.both %}
+<section class="flags-section">
+  <h2>Flags</h2>
+  {% if not has_flags %}
+  <p class="muted">No flags cleared the threshold for this matchup — nothing stood out in the stats gathered so far.</p>
+  {% else %}
+    {% if conflicting %}
+    <div class="flag-conflict">Conflicting signals: this game has flags leaning both over and under on the total — see below.</div>
+    {% endif %}
+    {% if flags.away %}
+    <h3>{{ game.away_school }}</h3>
+    <ul class="flag-list">
+      {% for f in flags.away %}
+      <li class="flag-item"><span class="flag-icon">{{ f.icon }}</span> <span class="flag-tag">{{ f.bet_type }}</span> {{ f.text }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if flags.home %}
+    <h3>{{ game.home_school }}</h3>
+    <ul class="flag-list">
+      {% for f in flags.home %}
+      <li class="flag-item"><span class="flag-icon">{{ f.icon }}</span> <span class="flag-tag">{{ f.bet_type }}</span> {{ f.text }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if flags.both %}
+    <h3>Head-to-head</h3>
+    <ul class="flag-list">
+      {% for f in flags.both %}
+      <li class="flag-item"><span class="flag-icon">{{ f.icon }}</span> <span class="flag-tag">{{ f.bet_type }}</span> {{ f.text }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  {% endif %}
+</section>
+
+<section class="matchup-frame">
+  <h2>{{ game.away_school }} Offense vs. {{ game.home_school }} Defense</h2>
+  <p class="muted sample-note">
+    {{ game.away_school }} offense: {{ blend_note(away.offense) }} &middot;
+    {{ game.home_school }} defense: {{ blend_note(home.defense) }}
+  </p>
+  <p class="muted sample-note sos-note">
+    {{ game.away_school }}: {{ sos_line(away.sos, 'offense') }} &middot;
+    {{ game.home_school }}: {{ sos_line(home.sos, 'defense') }}
+  </p>
+  <table class="data-table">
+    <thead><tr><th>Stat (per game)</th><th>{{ game.away_school }} offense</th><th>{{ game.home_school }} defense allowed</th></tr></thead>
+    <tbody>
+      <tr><td>Total yards</td><td>{{ fmt(away.offense.yards_pg) }}</td><td>{{ fmt(home.defense.yards_pg) }}</td></tr>
+      <tr><td>Rush yards</td><td>{{ fmt(away.offense.rush_pg) }}</td><td>{{ fmt(home.defense.rush_pg) }}</td></tr>
+      <tr><td>Pass yards</td><td>{{ fmt(away.offense.pass_pg) }}</td><td>{{ fmt(home.defense.pass_pg) }}</td></tr>
+      <tr><td>Plays</td><td>{{ fmt(away.offense.plays_pg) }}</td><td>{{ fmt(home.defense.plays_pg) }}</td></tr>
+      <tr><td>3rd down %</td><td>{{ pctval(away.offense.td_pct) }}</td><td>{{ pctval(home.defense.td_pct) }}</td></tr>
+      <tr><td>Turnovers</td><td>{{ fmt(away.offense.to_pg) }}</td><td>{{ fmt(home.defense.to_pg) }}</td></tr>
+      <tr class="advanced-row"><td>SP+ rating (opponent-adjusted)</td><td>{{ sprating(away.sp_plus.off_rating if away.sp_plus else none, away.sp_plus.off_ranking if away.sp_plus else none) }}</td><td>{{ sprating(home.sp_plus.def_rating if home.sp_plus else none, home.sp_plus.def_ranking if home.sp_plus else none) }}</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="matchup-frame">
+  <h2>{{ game.home_school }} Offense vs. {{ game.away_school }} Defense</h2>
+  <p class="muted sample-note">
+    {{ game.home_school }} offense: {{ blend_note(home.offense) }} &middot;
+    {{ game.away_school }} defense: {{ blend_note(away.defense) }}
+  </p>
+  <p class="muted sample-note sos-note">
+    {{ game.home_school }}: {{ sos_line(home.sos, 'offense') }} &middot;
+    {{ game.away_school }}: {{ sos_line(away.sos, 'defense') }}
+  </p>
+  <table class="data-table">
+    <thead><tr><th>Stat (per game)</th><th>{{ game.home_school }} offense</th><th>{{ game.away_school }} defense allowed</th></tr></thead>
+    <tbody>
+      <tr><td>Total yards</td><td>{{ fmt(home.offense.yards_pg) }}</td><td>{{ fmt(away.defense.yards_pg) }}</td></tr>
+      <tr><td>Rush yards</td><td>{{ fmt(home.offense.rush_pg) }}</td><td>{{ fmt(away.defense.rush_pg) }}</td></tr>
+      <tr><td>Pass yards</td><td>{{ fmt(home.offense.pass_pg) }}</td><td>{{ fmt(away.defense.pass_pg) }}</td></tr>
+      <tr><td>Plays</td><td>{{ fmt(home.offense.plays_pg) }}</td><td>{{ fmt(away.defense.plays_pg) }}</td></tr>
+      <tr><td>3rd down %</td><td>{{ pctval(home.offense.td_pct) }}</td><td>{{ pctval(away.defense.td_pct) }}</td></tr>
+      <tr><td>Turnovers</td><td>{{ fmt(home.offense.to_pg) }}</td><td>{{ fmt(away.defense.to_pg) }}</td></tr>
+      <tr class="advanced-row"><td>SP+ rating (opponent-adjusted)</td><td>{{ sprating(home.sp_plus.off_rating if home.sp_plus else none, home.sp_plus.off_ranking if home.sp_plus else none) }}</td><td>{{ sprating(away.sp_plus.def_rating if away.sp_plus else none, away.sp_plus.def_ranking if away.sp_plus else none) }}</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Raw Box Score (season averages, side by side)</h2>
+  <table class="data-table">
+    <thead><tr><th>Stat (per game)</th><th>{{ game.away_school }}</th><th>{{ game.home_school }}</th></tr></thead>
+    <tbody>
+      <tr><td>Total yards</td><td>{{ fmt(away.offense.yards_pg) }}</td><td>{{ fmt(home.offense.yards_pg) }}</td></tr>
+      <tr><td>Rush yards</td><td>{{ fmt(away.offense.rush_pg) }}</td><td>{{ fmt(home.offense.rush_pg) }}</td></tr>
+      <tr><td>Pass yards</td><td>{{ fmt(away.offense.pass_pg) }}</td><td>{{ fmt(home.offense.pass_pg) }}</td></tr>
+      <tr><td>Plays</td><td>{{ fmt(away.offense.plays_pg) }}</td><td>{{ fmt(home.offense.plays_pg) }}</td></tr>
+      <tr><td>Turnovers</td><td>{{ fmt(away.offense.to_pg) }}</td><td>{{ fmt(home.offense.to_pg) }}</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<div class="two-col">
+  <section class="players-col">
+    <h2>{{ game.away_school }} Players</h2>
+    {% for label, rows in [("Passing", away.passing), ("Rushing", away.rushing), ("Receiving", away.receiving)] %}
+      <h3>{{ label }}</h3>
+      {% if rows %}
+      <table class="data-table player-table">
+        <tbody>
+        {% for name, stats in rows %}
+          <tr>
+            <td>{{ name }}</td>
+            {% if label == "Passing" %}
+              <td>{{ stats.get("YDS", "—") }} yds</td><td>{{ stats.get("TD", "—") }} TD</td><td>{{ stats.get("INT", "—") }} INT</td>
+            {% elif label == "Rushing" %}
+              <td>{{ stats.get("CAR", "—") }} car</td><td>{{ stats.get("YDS", "—") }} yds</td><td>{{ stats.get("TD", "—") }} TD</td>
+            {% else %}
+              <td>{{ stats.get("REC", "—") }} rec</td><td>{{ stats.get("YDS", "—") }} yds</td><td>{{ stats.get("TD", "—") }} TD</td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">No {{ label|lower }} stats yet.</p>
+      {% endif %}
+    {% endfor %}
+  </section>
+
+  <section class="players-col">
+    <h2>{{ game.home_school }} Players</h2>
+    {% for label, rows in [("Passing", home.passing), ("Rushing", home.rushing), ("Receiving", home.receiving)] %}
+      <h3>{{ label }}</h3>
+      {% if rows %}
+      <table class="data-table player-table">
+        <tbody>
+        {% for name, stats in rows %}
+          <tr>
+            <td>{{ name }}</td>
+            {% if label == "Passing" %}
+              <td>{{ stats.get("YDS", "—") }} yds</td><td>{{ stats.get("TD", "—") }} TD</td><td>{{ stats.get("INT", "—") }} INT</td>
+            {% elif label == "Rushing" %}
+              <td>{{ stats.get("CAR", "—") }} car</td><td>{{ stats.get("YDS", "—") }} yds</td><td>{{ stats.get("TD", "—") }} TD</td>
+            {% else %}
+              <td>{{ stats.get("REC", "—") }} rec</td><td>{{ stats.get("YDS", "—") }} yds</td><td>{{ stats.get("TD", "—") }} TD</td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">No {{ label|lower }} stats yet.</p>
+      {% endif %}
+    {% endfor %}
+  </section>
+</div>
+
+<script>
+  var el = document.querySelector('.kickoff[data-utc]');
+  if (el) {
+    var d = new Date(el.getAttribute('data-utc'));
+    if (!isNaN(d)) {
+      el.textContent = d.toLocaleString(undefined, {
+        weekday: 'short', month: 'short', day: 'numeric',
+        hour: 'numeric', minute: '2-digit'
+      });
+    }
+  }
+</script>
+{% endblock %}

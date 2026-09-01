@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Coaches{% endblock %}
+{% block content %}
+<h1>Coaching History</h1>
+<p class="sub">This is the backbone for tracking scheme changes across stops (e.g. an OC's tendencies following them to a new school).</p>
+
+{% if coaches %}
+<table class="data-table">
+  <thead><tr><th>Coach</th><th>History</th></tr></thead>
+  <tbody>
+  {% for c in coaches %}
+    <tr>
+      <td>{{ c.first_name }} {{ c.last_name }}</td>
+      <td>{{ c.history }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No coaching data loaded yet.</p>
+{% endif %}
+{% endblock %}
