@@ -194,6 +194,14 @@ def _turnover_margin_flags(side, ctx):
     return [Flag("🔄", "Turnover margin", text, side, "side", abs(margin), TURNOVER_MARGIN_THRESHOLD, moniker)]
 
 
+MID_DEF_RANK = 68  # roughly the median FBS defensive SP+ rank (~136 teams) — the sanity-check midpoint below
+
+
+def _sp_def_rank(ctx):
+    sp = ctx.get("sp_plus")
+    return sp["def_ranking"] if sp and sp["def_ranking"] is not None else None
+
+
 def _shootout_under_flags(conn, season, away, home):
     avg = fbs_avg_yards_allowed(conn, season)
     a_allowed = away["defense"]["yards_pg"]
@@ -203,19 +211,35 @@ def _shootout_under_flags(conn, season, away, home):
     a_gap = a_allowed - avg
     h_gap = h_allowed - avg
     away_name, home_name = away["team"]["school"], home["team"]["school"]
+    a_rank, h_rank = _sp_def_rank(away), _sp_def_rank(home)
+
+    # Same schedule-strength problem as the matchup-advantage flag: raw
+    # "yards allowed" can look great against a weak slate or poor against
+    # a strong one without saying anything true about defensive quality.
+    # Sanity-check both teams' opponent-adjusted SP+ defensive rank before
+    # calling it a two-directional signal — unknown rank doesn't block it
+    # (nothing to contradict with), but a rank that actively disagrees does.
     if a_gap > SHOOTOUT_UNDER_THRESHOLD and h_gap > SHOOTOUT_UNDER_THRESHOLD:
+        if (a_rank is not None and a_rank <= MID_DEF_RANK) or (h_rank is not None and h_rank <= MID_DEF_RANK):
+            return []  # SP+ says at least one of these is actually a good defense
         text = (
             f"Both defenses are giving up more than the FBS average of ~{avg:.0f} yds/game "
             f"({away_name} allows {a_allowed:.0f}, {home_name} allows {h_allowed:.0f}) "
             f"— two defenses on the softer side, a shootout-friendly signal for the total."
         )
+        if a_rank is not None and h_rank is not None:
+            text += f" SP+ agrees: {away_name} #{a_rank} nat'l defense, {home_name} #{h_rank} nat'l."
         return [Flag("🔥", "Two-directional: shootout", text, "both", "total", (a_gap + h_gap) / 2, SHOOTOUT_UNDER_THRESHOLD, "Shootout signal — two soft defenses", lean="over")]
     if a_gap < -SHOOTOUT_UNDER_THRESHOLD and h_gap < -SHOOTOUT_UNDER_THRESHOLD:
+        if (a_rank is not None and a_rank > MID_DEF_RANK) or (h_rank is not None and h_rank > MID_DEF_RANK):
+            return []  # SP+ says at least one of these is actually a below-average defense
         text = (
             f"Both defenses are well under the FBS average of ~{avg:.0f} yds/game "
             f"({away_name} allows {a_allowed:.0f}, {home_name} allows {h_allowed:.0f}) "
             f"— two stout defenses, an under-friendly signal for the total."
         )
+        if a_rank is not None and h_rank is not None:
+            text += f" SP+ agrees: {away_name} #{a_rank} nat'l defense, {home_name} #{h_rank} nat'l."
         return [Flag("🧊", "Two-directional: low-scoring", text, "both", "total", (abs(a_gap) + abs(h_gap)) / 2, SHOOTOUT_UNDER_THRESHOLD, "Low-scoring signal — two stout defenses", lean="under")]
     return []
 
