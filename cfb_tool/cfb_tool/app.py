@@ -65,31 +65,21 @@ def default_week(conn, season, weeks):
     return weeks[-1]
 
 
-@app.route("/")
-def schedule():
-    conn = get_conn()
-    team_count = conn.execute("SELECT COUNT(*) c FROM teams").fetchone()["c"]
-    last_updated = last_updated_display(conn)
-
-    seasons = [r["season"] for r in conn.execute(
-        "SELECT DISTINCT season FROM games ORDER BY season DESC"
+def _season_weeks(conn, season):
+    if not season:
+        return []
+    return [r["week"] for r in conn.execute(
+        """SELECT DISTINCT week FROM games
+           WHERE season = ? AND season_type = 'regular' ORDER BY week""",
+        (season,),
     ).fetchall()]
-    season = request.args.get("season", type=int) or (seasons[0] if seasons else None)
 
-    weeks = []
-    if season:
-        weeks = [r["week"] for r in conn.execute(
-            """SELECT DISTINCT week FROM games
-               WHERE season = ? AND season_type = 'regular' ORDER BY week""",
-            (season,),
-        ).fetchall()]
 
-    week = request.args.get("week", type=int) or default_week(conn, season, weeks)
-    sensitivity = request.args.get("sensitivity", DEFAULT_SENSITIVITY)
-    if sensitivity not in SENSITIVITY_PRESETS:
-        sensitivity = DEFAULT_SENSITIVITY
-    star_threshold = SENSITIVITY_PRESETS[sensitivity]
-
+def _week_games(conn, season, week, sensitivity):
+    """Shared by the schedule and weekly-overview pages: every FBS game in
+    a week, each carrying its computed flags/star/moniker/market line so
+    both pages stay in sync without recomputing the same thing twice."""
+    star_threshold = SENSITIVITY_PRESETS.get(sensitivity, SENSITIVITY_PRESETS[DEFAULT_SENSITIVITY])
     raw_games = []
     if season and week:
         raw_games = conn.execute(
@@ -125,17 +115,61 @@ def schedule():
         line = game_lines.get(g["game_id"])
         games.append({
             **dict(g),
+            "flags": game_flags,
             "moniker": game_flags[0].moniker if game_flags else "",
             "star": is_star,
             "spread": line["spread"] if line else None,
             "over_under": line["over_under"] if line else None,
         })
+    return games, star_count
+
+
+@app.route("/")
+def schedule():
+    conn = get_conn()
+    team_count = conn.execute("SELECT COUNT(*) c FROM teams").fetchone()["c"]
+    last_updated = last_updated_display(conn)
+
+    seasons = [r["season"] for r in conn.execute(
+        "SELECT DISTINCT season FROM games ORDER BY season DESC"
+    ).fetchall()]
+    season = request.args.get("season", type=int) or (seasons[0] if seasons else None)
+    weeks = _season_weeks(conn, season)
+    week = request.args.get("week", type=int) or default_week(conn, season, weeks)
+    sensitivity = request.args.get("sensitivity", DEFAULT_SENSITIVITY)
+    if sensitivity not in SENSITIVITY_PRESETS:
+        sensitivity = DEFAULT_SENSITIVITY
+
+    games, star_count = _week_games(conn, season, week, sensitivity)
 
     conn.close()
     return render_template(
         "schedule.html", games=games, seasons=seasons, weeks=weeks,
         season=season, week=week, team_count=team_count, last_updated=last_updated,
         sensitivity=sensitivity, star_count=star_count,
+    )
+
+
+@app.route("/overview")
+def overview():
+    conn = get_conn()
+    seasons = [r["season"] for r in conn.execute(
+        "SELECT DISTINCT season FROM games ORDER BY season DESC"
+    ).fetchall()]
+    season = request.args.get("season", type=int) or (seasons[0] if seasons else None)
+    weeks = _season_weeks(conn, season)
+    week = request.args.get("week", type=int) or default_week(conn, season, weeks)
+    sensitivity = request.args.get("sensitivity", DEFAULT_SENSITIVITY)
+    if sensitivity not in SENSITIVITY_PRESETS:
+        sensitivity = DEFAULT_SENSITIVITY
+
+    games, star_count = _week_games(conn, season, week, sensitivity)
+    top_games = [g for g in games if g["star"]]
+
+    conn.close()
+    return render_template(
+        "overview.html", games=top_games, seasons=seasons, weeks=weeks,
+        season=season, week=week, sensitivity=sensitivity, star_count=star_count,
     )
 
 

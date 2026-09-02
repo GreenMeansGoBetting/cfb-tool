@@ -89,12 +89,50 @@ python3 ingest.py --year 2026</pre>
     });
   });
 
+  // Insert a day-separator line wherever the local calendar date changes —
+  // grouped by the viewer's own time zone (same source as the kickoff
+  // times above), not the server's, so the two never disagree about which
+  // day a game falls on.
+  (function () {
+    var list = document.getElementById('scheduleList');
+    if (!list) return;
+    var lastDateKey = null;
+    Array.from(list.querySelectorAll('.schedule-row')).forEach(function (row) {
+      var kickoffEl = row.querySelector('.kickoff[data-utc]');
+      if (!kickoffEl) return;
+      var d = new Date(kickoffEl.getAttribute('data-utc'));
+      if (isNaN(d)) return;
+      var dateKey = d.toDateString();
+      if (dateKey !== lastDateKey) {
+        var divider = document.createElement('div');
+        divider.className = 'day-divider';
+        divider.dataset.dateKey = dateKey;
+        divider.textContent = d.toLocaleDateString(undefined, {
+          weekday: 'long', month: 'long', day: 'numeric'
+        });
+        list.insertBefore(divider, row);
+        lastDateKey = dateKey;
+      }
+    });
+  })();
+
   var search = document.getElementById('teamSearch');
   if (search) {
     search.addEventListener('input', function () {
       var q = search.value.trim().toLowerCase();
+      var list = document.getElementById('scheduleList');
       document.querySelectorAll('#scheduleList .schedule-row').forEach(function (row) {
         row.style.display = row.getAttribute('data-teams').includes(q) ? '' : 'none';
+      });
+      // Hide a day divider if every row in its group is filtered out.
+      document.querySelectorAll('#scheduleList .day-divider').forEach(function (divider) {
+        var visible = false;
+        var node = divider.nextElementSibling;
+        while (node && !node.classList.contains('day-divider')) {
+          if (node.classList.contains('schedule-row') && node.style.display !== 'none') { visible = true; break; }
+          node = node.nextElementSibling;
+        }
+        divider.style.display = visible ? '' : 'none';
       });
     });
   }

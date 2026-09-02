@@ -162,6 +162,51 @@ select {
   flex-direction: column;
   gap: 8px;
 }
+.day-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 18px 0 2px;
+}
+.day-divider:first-child { margin-top: 4px; }
+.day-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Weekly overview */
+.overview-schedule-link { margin-left: auto; align-self: center; }
+.overview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.overview-card {
+  display: block;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  text-decoration: none;
+  color: var(--text);
+}
+.overview-card:hover { border-color: var(--accent); }
+.overview-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.overview-flag-list { margin: 0; }
 .schedule-row {
   display: flex;
   align-items: center;

@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Week {{ week }} Overview{% endblock %}
+{% block content %}
+
+<div class="filter-bar">
+  <form method="get" class="week-form">
+    <label>Season
+      <select name="season" onchange="this.form.submit()">
+        {% for s in seasons %}
+        <option value="{{ s }}" {% if s == season %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Week
+      <select name="week" onchange="this.form.submit()">
+        {% for w in weeks %}
+        <option value="{{ w }}" {% if w == week %}selected{% endif %}>Week {{ w }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+  <form method="get" class="sensitivity-form">
+    <input type="hidden" name="season" value="{{ season }}">
+    <input type="hidden" name="week" value="{{ week }}">
+    <label>Flag sensitivity
+      <select name="sensitivity" onchange="this.form.submit()">
+        <option value="loose" {% if sensitivity == "loose" %}selected{% endif %}>Loose</option>
+        <option value="medium" {% if sensitivity == "medium" %}selected{% endif %}>Medium</option>
+        <option value="strict" {% if sensitivity == "strict" %}selected{% endif %}>Strict</option>
+      </select>
+    </label>
+  </form>
+  <a href="/?season={{ season }}&week={{ week }}" class="back-link overview-schedule-link">Full schedule &rarr;</a>
+</div>
+
+<h1>Week {{ week }} Overview<span class="muted sub-count"> &middot; {{ star_count }} top matchup{{ "" if star_count == 1 else "s" }}</span></h1>
+
+{% if not games %}
+<p class="muted">No top matchups at this sensitivity yet — try Loose, or check back once more of the week has data.</p>
+{% else %}
+<div class="overview-list" id="overviewList">
+  {% for g in games %}
+  <a href="/game/{{ g.game_id }}" class="overview-card">
+    <div class="overview-card-header">
+      <div class="matchup-teams">
+        <span class="star">★</span>
+        {% if g.away_logo %}<img class="team-logo" src="{{ g.away_logo }}" alt="" loading="lazy">{% endif %}
+        <span class="team-name">{{ g.away_school }}</span>
+        <span class="at">@</span>
+        {% if g.home_logo %}<img class="team-logo" src="{{ g.home_logo }}" alt="" loading="lazy">{% endif %}
+        <span class="team-name">{{ g.home_school }}</span>
+      </div>
+      <div class="row-side">
+        {% if g.spread is not none or g.over_under is not none %}
+        <div class="odds">
+          {% if g.spread is not none %}{{ "%+.1f"|format(g.spread) }}{% else %}—{% endif %}
+          {% if g.over_under is not none %}&middot; {{ "%.1f"|format(g.over_under) }}{% endif %}
+        </div>
+        {% endif %}
+        <div class="kickoff" data-utc="{{ g.start_date }}">{{ g.start_date }}</div>
+      </div>
+    </div>
+    <ul class="flag-list overview-flag-list">
+      {% for f in g.flags %}
+      <li class="flag-item"><span class="flag-icon">{{ f.icon }}</span> <span class="flag-tag">{{ f.bet_type }}</span> {{ f.text }}</li>
+      {% endfor %}
+    </ul>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<script>
+  document.querySelectorAll('.kickoff[data-utc]').forEach(function (el) {
+    var d = new Date(el.getAttribute('data-utc'));
+    if (isNaN(d)) return;
+    el.textContent = d.toLocaleString(undefined, {
+      weekday: 'short', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit'
+    });
+  });
+
+  (function () {
+    var list = document.getElementById('overviewList');
+    if (!list) return;
+    var lastDateKey = null;
+    Array.from(list.querySelectorAll('.overview-card')).forEach(function (card) {
+      var kickoffEl = card.querySelector('.kickoff[data-utc]');
+      if (!kickoffEl) return;
+      var d = new Date(kickoffEl.getAttribute('data-utc'));
+      if (isNaN(d)) return;
+      var dateKey = d.toDateString();
+      if (dateKey !== lastDateKey) {
+        var divider = document.createElement('div');
+        divider.className = 'day-divider';
+        divider.textContent = d.toLocaleDateString(undefined, {
+          weekday: 'long', month: 'long', day: 'numeric'
+        });
+        list.insertBefore(divider, card);
+        lastDateKey = dateKey;
+      }
+    });
+  })();
+</script>
+{% endblock %}
