@@ -17,7 +17,11 @@ BASE_URL = "https://api.collegefootballdata.com"
 
 class CFBDClient:
     def __init__(self, api_key=None):
-        self.api_key = api_key or os.environ.get("CFBD_API_KEY")
+        # .strip() guards against a stray trailing newline/whitespace from
+        # copy-pasting the key into a GitHub Actions secret or a shell env
+        # var -- that's invisible in most UIs but breaks the Authorization
+        # header outright (requests rejects \r/\n in header values).
+        self.api_key = (api_key or os.environ.get("CFBD_API_KEY") or "").strip() or None
         if not self.api_key:
             raise RuntimeError(
                 "No CFBD API key found. Set the CFBD_API_KEY environment "
