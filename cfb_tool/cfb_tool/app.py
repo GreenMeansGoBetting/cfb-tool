@@ -9,11 +9,12 @@ from datetime import datetime, timezone
 from flask import Flask, render_template, request, abort
 from db.db import get_conn
 import flags as flag_engine
-import blending
+import team_stats
 import sos
 import weather as weather_engine
 import returning
 import lines as lines_engine
+import depth_chart
 
 app = Flask(__name__)
 
@@ -152,10 +153,9 @@ def _top_players(conn, team_id, season, category, limit=5):
     return players[:limit]
 
 
-# Blended offense/defense is ~7 queries per team (current + prior season
-# aggregates, both sides, plus returning production). The schedule page
-# computes it for every team in the week, and it can't change until the
-# next ingest — so cache it in-process, keyed off the ingest timestamp
+# Team offense/defense/SP+/SOS is several queries per team. The schedule
+# page computes it for every team in the week, and it can't change until
+# the next ingest — so cache it in-process, keyed off the ingest timestamp
 # (a fresh ingest changes the key, which naturally invalidates stale
 # entries without needing an explicit purge).
 _SNAPSHOT_CACHE = {}
@@ -170,15 +170,10 @@ def team_stat_snapshot(conn, team_id, season):
     if cached is not None:
         return cached
     team = conn.execute("SELECT * FROM teams WHERE team_id = ?", (team_id,)).fetchone()
-    passing_returning = returning.top_producer_returning(conn, team_id, season, "passing")
-    rushing_returning = returning.top_producer_returning(conn, team_id, season, "rushing")
     snapshot = {
         "team": team,
-        "offense": blending.blended_offense(
-            conn, team_id, season,
-            passing_returning=passing_returning, rushing_returning=rushing_returning,
-        ),
-        "defense": blending.blended_defense_allowed(conn, team_id, season),
+        "offense": team_stats.team_offense(conn, team_id, season),
+        "defense": team_stats.team_defense_allowed(conn, team_id, season),
         "sp_plus": sos.team_sp_plus(conn, team_id, season),
         "sos": sos.sos_summary(conn, team_id, season),
     }
@@ -192,6 +187,7 @@ def team_matchup_context(conn, team_id, season):
     ctx["rushing"] = _top_players(conn, team_id, season, "rushing")
     ctx["receiving"] = _top_players(conn, team_id, season, "receiving")
     ctx["key_returners"] = returning.key_returners(conn, team_id, season)
+    ctx["depth_chart"] = depth_chart.team_depth_chart(conn, team_id, season)
     return ctx
 
 

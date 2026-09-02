@@ -69,15 +69,8 @@ def _gm(games):
 
 
 def _sample_phrase(stat_ctx):
-    """Plain factual sample-size note for a blended offense/defense dict —
-    states the actual current-season game count, and flags plainly when
-    the number itself leans on last season's blended-in prior."""
-    phrase = _gm(stat_ctx["games"])
-    if stat_ctx.get("is_blended"):
-        if stat_ctx["games"] == 0:
-            return f"{phrase} this season — based on last season's stats"
-        return f"{phrase}, blended with last season"
-    return phrase
+    """Plain factual sample-size note for an offense/defense dict."""
+    return _gm(stat_ctx["games"])
 
 
 def _tempo_flags(away, home):

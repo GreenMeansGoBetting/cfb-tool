@@ -1,11 +1,10 @@
 """
 Player-level "who's actually still here" — the concrete complement to the
-team-wide returning-production percentage used in blending.py. A "41%
-production returning" number doesn't say WHOSE production that is; if the
-answer is "the starting QB left," last season's stats are a much weaker
-prior than the percentage alone suggests. This pulls last season's top
-producer at each offensive skill spot and checks it against this year's
-actual roster (players table, synced from CFBD's /roster).
+team-wide returning-production percentage (team_stats.py). A "41%
+production returning" number doesn't say WHOSE production that is; this
+pulls last season's top producer at each offensive skill spot and checks
+it against this year's actual roster (players table, synced from CFBD's
+/roster).
 """
 
 _CATEGORY_LABELS = {"passing": "Passing", "rushing": "Rushing", "receiving": "Receiving"}
@@ -29,29 +28,6 @@ def _top_producer(conn, team_id, prior_season, category):
     lead_stat = _LEAD_STAT[category]
     (player_id, name), stats = max(by_player.items(), key=lambda kv: kv[1].get(lead_stat) or 0)
     return player_id, name, stats
-
-
-def top_producer_returning(conn, team_id, season, category):
-    """True/False/None (unknown) — is last season's #1 producer in this
-    category still on this year's roster? A confirmed 'no' here is a much
-    stronger, more specific signal than a team-wide returning-production
-    percentage, which can stay comfortably high even when the single
-    player who drove most of a specific stat (e.g. the starting QB for
-    passing) is definitely gone — that's exactly the gap blending.py's
-    passing_trust/rushing_trust overrides exist to close."""
-    roster_ids = {
-        r["player_id"] for r in conn.execute(
-            "SELECT player_id FROM players WHERE team_id = ? AND season = ?",
-            (team_id, season),
-        ).fetchall()
-    }
-    if not roster_ids:
-        return None
-    top = _top_producer(conn, team_id, season - 1, category)
-    if top is None:
-        return None
-    player_id, _, _ = top
-    return player_id in roster_ids
 
 
 def key_returners(conn, team_id, season):

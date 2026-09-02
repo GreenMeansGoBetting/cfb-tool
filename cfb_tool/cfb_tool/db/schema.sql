@@ -197,9 +197,9 @@ CREATE TABLE IF NOT EXISTS sp_plus_ratings (
 );
 
 -- Team-level returning production, sourced from CFBD's /player/returning
--- endpoint. Used as the "how much should we trust last season's stats"
--- factor in the cold-start blend (see blending.py) — heavy roster
--- turnover means last year's numbers describe a team that's mostly gone.
+-- endpoint. Drives the REBUILD badge (see team_stats.py) — a plain roster
+-- fact about how much of last year's production is still around, shown
+-- alongside this year's stats rather than blended into them.
 CREATE TABLE IF NOT EXISTS returning_production (
     team_id     INTEGER NOT NULL REFERENCES teams(team_id),
     season      INTEGER NOT NULL,

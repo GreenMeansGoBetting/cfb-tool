@@ -27,6 +27,30 @@
   {%- endif -%}
 {%- endmacro %}
 
+{% macro depth_chart_section(dc) -%}
+  {% for pos in ['QB', 'RB', 'WR', 'TE'] %}
+    {% set d = dc[pos] %}
+    {% if d and (d.ranked or d.others) %}
+    <h3>{{ pos }}</h3>
+    {% if d.ranked %}
+    <table class="data-table player-table">
+      <tbody>
+      {% for r in d.ranked %}
+        <tr>
+          <td>{{ r.name }}</td>
+          <td>{{ r.usage|round(0)|int }} {{ r.usage_label|lower }}{% if r.yards is not none %} &middot; {{ r.yards|round(0)|int }} yds{% endif %} last season</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% if d.others %}
+    <p class="muted depth-others">Other {{ pos }}s on the roster, no 2025 production here to rank by: {{ d.others|join(', ') }}</p>
+    {% endif %}
+    {% endif %}
+  {% endfor %}
+{%- endmacro %}
+
 {% macro key_returners_line(list) -%}
   {%- if not list -%}
     no roster data yet to check who's back
@@ -44,16 +68,8 @@
   {%- endif -%}
 {%- endmacro %}
 
-{% macro blend_note(ctx) -%}
-  {%- if ctx.is_blended -%}
-    {%- if ctx.games == 0 -%}
-      no games yet this season — based on last season{% if ctx.returning_pct is not none %}, {{ "%.0f"|format(ctx.returning_pct * 100) }}% production returning{% endif %}
-    {%- else -%}
-      {{ gm(ctx.games) }} this season, blended with last season ({{ "%.0f"|format(ctx.prior_weight * 100) }}% weight on last year{% if ctx.returning_pct is not none %}, {{ "%.0f"|format(ctx.returning_pct * 100) }}% production returning{% endif %})
-    {%- endif -%}
-  {%- else -%}
-    {{ gm(ctx.games) }} this season
-  {%- endif -%}
+{% macro sample_note(ctx) -%}
+  {{ gm(ctx.games) }} this season
 {%- endmacro %}
 
 <a href="/?season={{ game.season }}&week={{ game.week }}" class="back-link">&larr; Back to schedule</a>
@@ -76,7 +92,7 @@
   <strong>High uncertainty.</strong>
   {% if away_rebuild %}{{ game.away_school }} returns {{ "%.0f"|format(away.offense.returning_pct*100) }}% of last season's production.{% endif %}
   {% if home_rebuild %}{{ game.home_school }} returns {{ "%.0f"|format(home.offense.returning_pct*100) }}% of last season's production.{% endif %}
-  These numbers lean heavily on 2025 form until more of 2026 is in the book.
+  Heavy roster turnover — treat any early-season stats or flags for that team with extra caution.
 </div>
 {% endif %}
 
@@ -143,18 +159,16 @@
 <section class="matchup-frame">
   <h2>{{ game.away_school }} Offense vs. {{ game.home_school }} Defense</h2>
   <p class="muted sample-note">
-    {{ game.away_school }} offense: {{ blend_note(away.offense) }} {{ rebuild_badge(away.offense) }} &middot;
-    {{ game.home_school }} defense: {{ blend_note(home.defense) }}
+    {{ game.away_school }} offense: {{ sample_note(away.offense) }} {{ rebuild_badge(away.offense) }} &middot;
+    {{ game.home_school }} defense: {{ sample_note(home.defense) }}
   </p>
   <p class="muted sample-note sos-note">
     {{ game.away_school }}: {{ sos_line(away.sos, 'offense') }} &middot;
     {{ game.home_school }}: {{ sos_line(home.sos, 'defense') }}
   </p>
-  {% if away.offense.is_blended %}
   <p class="muted sample-note returners-note">
     {{ game.away_school }} — who's actually back: {{ key_returners_line(away.key_returners) }}
   </p>
-  {% endif %}
   <table class="data-table">
     <thead><tr><th>Stat (per game)</th><th>{{ game.away_school }} offense</th><th>{{ game.home_school }} defense allowed</th></tr></thead>
     <tbody>
@@ -172,18 +186,16 @@
 <section class="matchup-frame">
   <h2>{{ game.home_school }} Offense vs. {{ game.away_school }} Defense</h2>
   <p class="muted sample-note">
-    {{ game.home_school }} offense: {{ blend_note(home.offense) }} {{ rebuild_badge(home.offense) }} &middot;
-    {{ game.away_school }} defense: {{ blend_note(away.defense) }}
+    {{ game.home_school }} offense: {{ sample_note(home.offense) }} {{ rebuild_badge(home.offense) }} &middot;
+    {{ game.away_school }} defense: {{ sample_note(away.defense) }}
   </p>
   <p class="muted sample-note sos-note">
     {{ game.home_school }}: {{ sos_line(home.sos, 'offense') }} &middot;
     {{ game.away_school }}: {{ sos_line(away.sos, 'defense') }}
   </p>
-  {% if home.offense.is_blended %}
   <p class="muted sample-note returners-note">
     {{ game.home_school }} — who's actually back: {{ key_returners_line(home.key_returners) }}
   </p>
-  {% endif %}
   <table class="data-table">
     <thead><tr><th>Stat (per game)</th><th>{{ game.home_school }} offense</th><th>{{ game.away_school }} defense allowed</th></tr></thead>
     <tbody>
@@ -215,6 +227,8 @@
 <div class="two-col">
   <section class="players-col">
     <h2>{{ game.away_school }} Players</h2>
+    <p class="muted depth-chart-disclaimer">Likely contributors — ranked by 2025 usage among players still on the roster, not an official depth chart (none exists publicly).</p>
+    {{ depth_chart_section(away.depth_chart) }}
     {% for label, rows in [("Passing", away.passing), ("Rushing", away.rushing), ("Receiving", away.receiving)] %}
       <h3>{{ label }}</h3>
       {% if rows %}
@@ -242,6 +256,8 @@
 
   <section class="players-col">
     <h2>{{ game.home_school }} Players</h2>
+    <p class="muted depth-chart-disclaimer">Likely contributors — ranked by 2025 usage among players still on the roster, not an official depth chart (none exists publicly).</p>
+    {{ depth_chart_section(home.depth_chart) }}
     {% for label, rows in [("Passing", home.passing), ("Rushing", home.rushing), ("Receiving", home.receiving)] %}
       <h3>{{ label }}</h3>
       {% if rows %}

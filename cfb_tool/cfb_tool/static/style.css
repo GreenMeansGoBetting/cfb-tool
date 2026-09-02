@@ -242,6 +242,8 @@ select {
   margin: 18px 0 6px;
 }
 .player-table td { font-size: 0.88rem; }
+.depth-chart-disclaimer { font-size: 0.8rem; margin-bottom: 10px; font-style: italic; }
+.depth-others { font-size: 0.82rem; margin: 4px 0 14px; }
 
 /* Flags */
 .flags-section h3 {
