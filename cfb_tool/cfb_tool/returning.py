@@ -53,6 +53,7 @@ def key_returners(conn, team_id, season):
             "name": name,
             "stat_value": stats.get(lead_stat),
             "stat_label": lead_stat,
+            "td": stats.get("TD"),
             "returning": player_id in roster_ids if roster_ids else None,
         })
     return results

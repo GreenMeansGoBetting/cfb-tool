@@ -37,8 +37,11 @@
       <tbody>
       {% for r in d.ranked %}
         <tr>
-          <td>{{ r.name }}</td>
-          <td>{{ r.usage|round(0)|int }} {{ r.usage_label|lower }}{% if r.yards is not none %} &middot; {{ r.yards|round(0)|int }} yds{% endif %} last season</td>
+          <td>{{ r.name }}{% if r.transferred_from %} <span class="transfer-tag">transfer, {{ r.transferred_from }}</span>{% endif %}</td>
+          <td>
+            {{ r.usage|round(0)|int }} {{ r.usage_label|lower }}{% if r.yards is not none %} &middot; {{ r.yards|round(0)|int }} yds{% endif %}{% if r.td is not none %} &middot; {{ r.td|round(0)|int }} TD{% endif %}
+            last season
+          </td>
         </tr>
       {% endfor %}
       </tbody>
@@ -56,7 +59,7 @@
     no roster data yet to check who's back
   {%- else -%}
     {%- for r in list -%}
-      {{ r.name }} ({{ r.category }}, {{ r.stat_value | round(0) | int if r.stat_value is not none else "—" }} {{ r.stat_label|lower }} last season){% if r.returning is none %} — unknown{% elif r.returning %} — <span class="returner-back">back</span>{% else %} — <span class="returner-gone">departed</span>{% endif %}{% if not loop.last %} &middot; {% endif %}
+      {{ r.name }} ({{ r.category }}, {{ r.stat_value | round(0) | int if r.stat_value is not none else "—" }} {{ r.stat_label|lower }}{% if r.td is not none %}, {{ r.td|round(0)|int }} TD{% endif %} last season){% if r.returning is none %} — unknown{% elif r.returning %} — <span class="returner-back">back</span>{% else %} — <span class="returner-gone">departed</span>{% endif %}{% if not loop.last %} &middot; {% endif %}
     {%- endfor -%}
   {%- endif -%}
 {%- endmacro %}
