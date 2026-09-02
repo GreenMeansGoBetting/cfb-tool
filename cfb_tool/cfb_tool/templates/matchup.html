@@ -37,6 +37,13 @@
   {%- endif -%}
 {%- endmacro %}
 
+{% set REBUILD_THRESHOLD = 0.5 %}
+{% macro rebuild_badge(ctx) -%}
+  {%- if ctx.returning_pct is not none and ctx.returning_pct < REBUILD_THRESHOLD -%}
+    <span class="rebuild-badge" title="Returning production is below 50% — treat last season's numbers with extra caution">REBUILD &middot; {{ "%.0f"|format(ctx.returning_pct * 100) }}% returning</span>
+  {%- endif -%}
+{%- endmacro %}
+
 {% macro blend_note(ctx) -%}
   {%- if ctx.is_blended -%}
     {%- if ctx.games == 0 -%}
@@ -61,6 +68,17 @@
   {% if game.venue %} &middot; {{ game.venue }}{% endif %}
   {% if game.home_points is not none %} &middot; Final: {{ game.away_school }} {{ game.away_points }} – {{ game.home_school }} {{ game.home_points }}{% endif %}
 </p>
+
+{% set away_rebuild = away.offense.returning_pct is not none and away.offense.returning_pct < REBUILD_THRESHOLD %}
+{% set home_rebuild = home.offense.returning_pct is not none and home.offense.returning_pct < REBUILD_THRESHOLD %}
+{% if away_rebuild or home_rebuild %}
+<div class="uncertainty-banner">
+  <strong>High uncertainty.</strong>
+  {% if away_rebuild %}{{ game.away_school }} returns {{ "%.0f"|format(away.offense.returning_pct*100) }}% of last season's production.{% endif %}
+  {% if home_rebuild %}{{ game.home_school }} returns {{ "%.0f"|format(home.offense.returning_pct*100) }}% of last season's production.{% endif %}
+  These numbers lean heavily on 2025 form until more of 2026 is in the book.
+</div>
+{% endif %}
 
 {% if model_spread %}
 <p class="muted model-spread-note">
@@ -110,7 +128,7 @@
 <section class="matchup-frame">
   <h2>{{ game.away_school }} Offense vs. {{ game.home_school }} Defense</h2>
   <p class="muted sample-note">
-    {{ game.away_school }} offense: {{ blend_note(away.offense) }} &middot;
+    {{ game.away_school }} offense: {{ blend_note(away.offense) }} {{ rebuild_badge(away.offense) }} &middot;
     {{ game.home_school }} defense: {{ blend_note(home.defense) }}
   </p>
   <p class="muted sample-note sos-note">
@@ -139,7 +157,7 @@
 <section class="matchup-frame">
   <h2>{{ game.home_school }} Offense vs. {{ game.away_school }} Defense</h2>
   <p class="muted sample-note">
-    {{ game.home_school }} offense: {{ blend_note(home.offense) }} &middot;
+    {{ game.home_school }} offense: {{ blend_note(home.offense) }} {{ rebuild_badge(home.offense) }} &middot;
     {{ game.away_school }} defense: {{ blend_note(away.defense) }}
   </p>
   <p class="muted sample-note sos-note">

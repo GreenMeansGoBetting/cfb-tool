@@ -206,6 +206,28 @@ select {
 /* Matchup card */
 .back-link { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
 .model-spread-note { font-size: 0.9rem; margin: 8px 0 0; }
+.uncertainty-banner {
+  background: var(--panel);
+  border: 1px solid #b8862b;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 12px 0 4px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.uncertainty-banner strong { color: #d9a53f; }
+.rebuild-badge {
+  display: inline-block;
+  border: 1px solid #b8862b;
+  color: #d9a53f;
+  border-radius: 4px;
+  padding: 1px 7px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-left: 4px;
+}
 .back-link:hover { text-decoration: underline; }
 .matchup-frame { margin-top: 28px; }
 .sample-note { font-size: 0.85rem; margin-top: -4px; }
