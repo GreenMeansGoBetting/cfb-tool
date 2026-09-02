@@ -168,6 +168,46 @@ def sync_games(client, conn, year):
     print(f"  {len(rows)} games synced.")
 
 
+def _split_week_zero(conn, year):
+    """CFBD has no separate 'Week 0' in its data -- the small
+    season-opening slate (the odd Thursday/weekend of games before the
+    main slate) gets lumped into week=1, which then spans 10+ days and
+    mixes already-played games in with the upcoming week. Detect the
+    real-world gap (Week 0 games cluster a few days before Week 1's
+    Thursday, with a multi-day dead stretch between them) and relabel
+    that early cluster to week=0 in our own data. Only ever touches
+    week=1 -- this specific double-slate pattern doesn't happen in later
+    weeks, so there's nothing to (mis)detect there.
+
+    Deliberately run this LAST in the ingest pipeline (see main()), after
+    every step that loops over "distinct weeks this season" to query
+    CFBD (team stats) -- CFBD's own API doesn't know about week=0 either,
+    so relabeling before those steps run would make them waste a call on
+    a week CFBD has no data for, instead of the week=1 call that actually
+    covers both our week=0 and week=1 games."""
+    from datetime import datetime
+    rows = conn.execute(
+        "SELECT game_id, start_date FROM games WHERE season = ? AND season_type = 'regular' AND week = 1 ORDER BY start_date",
+        (year,),
+    ).fetchall()
+    if len(rows) < 3:
+        return
+    parsed = [(r[0], datetime.fromisoformat(r[1].replace("Z", "+00:00"))) for r in rows if r[1]]
+    split_index = None
+    for i in range(1, len(parsed)):
+        gap_hours = (parsed[i][1] - parsed[i - 1][1]).total_seconds() / 3600
+        if gap_hours >= 48:
+            split_index = i
+            break
+    if split_index is None or split_index < 2:
+        return  # no real gap, or too few games before it to be a real Week 0 slate
+    early_ids = [gid for gid, _ in parsed[:split_index]]
+    conn.executemany("UPDATE games SET week = 0 WHERE game_id = ?", [(gid,) for gid in early_ids])
+    conn.commit()
+    print(f"  Split {len(early_ids)} early game(s) into Week 0 "
+          f"(gap detected before {parsed[split_index][1].date()})")
+
+
 def sync_team_game_stats(client, conn, year):
     print(f"Syncing team game stats for {year}...")
     # CFBD requires week, team, or conference on this endpoint — a bare
@@ -442,6 +482,7 @@ def main():
             sync_sp_plus(client, conn, args.year)
             sync_roster(client, conn, args.year)
             sync_lines(client, conn, args.year)
+            _split_week_zero(conn, args.year)
         conn.execute(
             "INSERT INTO meta (key, value) VALUES ('last_updated', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
