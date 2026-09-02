@@ -164,9 +164,14 @@ def team_stat_snapshot(conn, team_id, season):
     if cached is not None:
         return cached
     team = conn.execute("SELECT * FROM teams WHERE team_id = ?", (team_id,)).fetchone()
+    passing_returning = returning.top_producer_returning(conn, team_id, season, "passing")
+    rushing_returning = returning.top_producer_returning(conn, team_id, season, "rushing")
     snapshot = {
         "team": team,
-        "offense": blending.blended_offense(conn, team_id, season),
+        "offense": blending.blended_offense(
+            conn, team_id, season,
+            passing_returning=passing_returning, rushing_returning=rushing_returning,
+        ),
         "defense": blending.blended_defense_allowed(conn, team_id, season),
         "sp_plus": sos.team_sp_plus(conn, team_id, season),
         "sos": sos.sos_summary(conn, team_id, season),

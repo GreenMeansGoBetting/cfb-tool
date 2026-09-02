@@ -12,6 +12,48 @@ _CATEGORY_LABELS = {"passing": "Passing", "rushing": "Rushing", "receiving": "Re
 _LEAD_STAT = {"passing": "YDS", "rushing": "YDS", "receiving": "YDS"}
 
 
+def _top_producer(conn, team_id, prior_season, category):
+    """(player_id, name, stats) for last season's #1 producer in a
+    category, or None if there's no data for it."""
+    rows = conn.execute(
+        """SELECT player_id, player_name, stat_type, stat_value
+           FROM player_season_stats
+           WHERE team_id = ? AND season = ? AND category = ?""",
+        (team_id, prior_season, category),
+    ).fetchall()
+    if not rows:
+        return None
+    by_player = {}
+    for r in rows:
+        by_player.setdefault((r["player_id"], r["player_name"]), {})[r["stat_type"]] = r["stat_value"]
+    lead_stat = _LEAD_STAT[category]
+    (player_id, name), stats = max(by_player.items(), key=lambda kv: kv[1].get(lead_stat) or 0)
+    return player_id, name, stats
+
+
+def top_producer_returning(conn, team_id, season, category):
+    """True/False/None (unknown) — is last season's #1 producer in this
+    category still on this year's roster? A confirmed 'no' here is a much
+    stronger, more specific signal than a team-wide returning-production
+    percentage, which can stay comfortably high even when the single
+    player who drove most of a specific stat (e.g. the starting QB for
+    passing) is definitely gone — that's exactly the gap blending.py's
+    passing_trust/rushing_trust overrides exist to close."""
+    roster_ids = {
+        r["player_id"] for r in conn.execute(
+            "SELECT player_id FROM players WHERE team_id = ? AND season = ?",
+            (team_id, season),
+        ).fetchall()
+    }
+    if not roster_ids:
+        return None
+    top = _top_producer(conn, team_id, season - 1, category)
+    if top is None:
+        return None
+    player_id, _, _ = top
+    return player_id in roster_ids
+
+
 def key_returners(conn, team_id, season):
     """Last season's #1 producer in each offensive category, each tagged
     with whether they're on this season's roster for this team."""
@@ -25,20 +67,11 @@ def key_returners(conn, team_id, season):
 
     results = []
     for category, label in _CATEGORY_LABELS.items():
-        rows = conn.execute(
-            """SELECT player_id, player_name, stat_type, stat_value
-               FROM player_season_stats
-               WHERE team_id = ? AND season = ? AND category = ?""",
-            (team_id, prior_season, category),
-        ).fetchall()
-        if not rows:
+        top = _top_producer(conn, team_id, prior_season, category)
+        if top is None:
             continue
-        by_player = {}
-        for r in rows:
-            by_player.setdefault((r["player_id"], r["player_name"]), {})[r["stat_type"]] = r["stat_value"]
+        player_id, name, stats = top
         lead_stat = _LEAD_STAT[category]
-        top = max(by_player.items(), key=lambda kv: kv[1].get(lead_stat) or 0)
-        (player_id, name), stats = top
         results.append({
             "category": label,
             "name": name,
