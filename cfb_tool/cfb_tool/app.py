@@ -214,6 +214,7 @@ def game_detail(game_id):
     forecast = weather_engine.game_forecast(venue, game["start_date"], datetime.now(timezone.utc))
 
     all_flags = flag_engine.compute_game_flags(conn, game["season"], away, home, forecast=forecast)
+    model_spread = sos.implied_spread(home.get("sp_plus"), away.get("sp_plus"), neutral_site=bool(game["neutral_site"]))
     conn.close()
 
     grouped_flags = {
@@ -226,6 +227,7 @@ def game_detail(game_id):
     return render_template(
         "matchup.html", game=game, home=home, away=away,
         flags=grouped_flags, conflicting=conflicting, forecast=forecast, venue=venue,
+        model_spread=model_spread,
     )
 
 

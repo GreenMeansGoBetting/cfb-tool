@@ -12,11 +12,39 @@ so it's inspectable and always in sync with what the matchup card shows.
 """
 
 
+HOME_FIELD_POINTS = 2.5  # standard rough modern-CFB estimate, not team/venue-specific
+
+
 def team_sp_plus(conn, team_id, season):
     return conn.execute(
         "SELECT * FROM sp_plus_ratings WHERE team_id = ? AND season = ?",
         (team_id, season),
     ).fetchone()
+
+
+def implied_spread(home_sp, away_sp, neutral_site=False):
+    """Power-rating implied spread, per the concept doc's own stated
+    mechanism: the gap between two teams' overall SP+ ratings, adjusted
+    for home field (skipped for a neutral-site game — e.g. the Ireland/
+    Dublin games this schedule already has, where the "home" team in our
+    data gets no real home-field edge). This is intentionally the ONLY
+    model-implied number built so far — a total would need combining
+    offense/defense sub-ratings in a way that can't be verified against
+    a known-correct reference here, so it's left unbuilt rather than
+    guessed at.
+
+    Returns {favored_team: 'home'|'away', margin: float} or None if
+    either team's SP+ rating is missing.
+    """
+    if not home_sp or not away_sp or home_sp["rating"] is None or away_sp["rating"] is None:
+        return None
+    hfa = 0.0 if neutral_site else HOME_FIELD_POINTS
+    home_margin = (home_sp["rating"] - away_sp["rating"]) + hfa
+    return {
+        "favored_team": "home" if home_margin >= 0 else "away",
+        "margin": round(abs(home_margin), 1),
+        "neutral_site": bool(neutral_site),
+    }
 
 
 def opponents_faced(conn, team_id, season):

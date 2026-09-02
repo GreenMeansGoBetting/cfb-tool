@@ -62,6 +62,15 @@
   {% if game.home_points is not none %} &middot; Final: {{ game.away_school }} {{ game.away_points }} – {{ game.home_school }} {{ game.home_points }}{% endif %}
 </p>
 
+{% if model_spread %}
+<p class="muted model-spread-note">
+  Power rating (SP+) implies {{ game.home_school if model_spread.favored_team == 'home' else game.away_school }}
+  by {{ model_spread.margin }}
+  {% if model_spread.neutral_site %}(rating gap only — neutral site, no home-field adjustment applied){% else %}(rating gap + 2.5-pt home field — a rough estimate, not a specific-venue adjustment){% endif %}.
+  No market line to compare against yet.
+</p>
+{% endif %}
+
 {% set has_flags = flags.away or flags.home or flags.both %}
 <section class="flags-section">
   <h2>Flags</h2>
