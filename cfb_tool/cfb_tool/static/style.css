@@ -201,11 +201,14 @@ select {
 }
 .moniker { color: var(--accent); font-size: 0.82rem; }
 .kickoff { color: var(--muted); font-size: 0.9rem; white-space: nowrap; }
+.row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.odds { color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
 .sensitivity-form label { color: var(--muted); font-size: 0.9rem; }
 
 /* Matchup card */
 .back-link { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
 .model-spread-note { font-size: 0.9rem; margin: 8px 0 0; }
+.odds-note { font-size: 0.9rem; margin: 4px 0 0; }
 .uncertainty-banner {
   background: var(--panel);
   border: 1px solid #b8862b;

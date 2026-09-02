@@ -69,6 +69,11 @@ class CFBDClient:
             params["week"] = week
         return self._get("/games", params)
 
+    def get_lines(self, year, season_type="regular"):
+        """Betting lines aggregated across several sportsbooks — CFBD's
+        own data, no separate odds API/account needed."""
+        return self._get("/lines", {"year": year, "seasonType": season_type})
+
     def get_venues(self):
         """Static list of every venue CFBD knows about — not year-scoped."""
         return self._get("/venues")

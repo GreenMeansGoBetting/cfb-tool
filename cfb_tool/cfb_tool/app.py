@@ -13,6 +13,7 @@ import blending
 import sos
 import weather as weather_engine
 import returning
+import lines as lines_engine
 
 app = Flask(__name__)
 
@@ -105,6 +106,7 @@ def schedule():
     games = []
     star_count = 0
     snapshot_cache = {}
+    game_lines = lines_engine.preferred_lines_for_games(conn, [g["game_id"] for g in raw_games])
 
     def snapshot(team_id):
         if team_id not in snapshot_cache:
@@ -119,10 +121,13 @@ def schedule():
         is_star = signal >= star_threshold
         if is_star:
             star_count += 1
+        line = game_lines.get(g["game_id"])
         games.append({
             **dict(g),
             "moniker": game_flags[0].moniker if game_flags else "",
             "star": is_star,
+            "spread": line["spread"] if line else None,
+            "over_under": line["over_under"] if line else None,
         })
 
     conn.close()
@@ -215,6 +220,8 @@ def game_detail(game_id):
 
     all_flags = flag_engine.compute_game_flags(conn, game["season"], away, home, forecast=forecast)
     model_spread = sos.implied_spread(home.get("sp_plus"), away.get("sp_plus"), neutral_site=bool(game["neutral_site"]))
+    market_line = lines_engine.preferred_line(conn, game_id)
+    gap = lines_engine.market_gap(model_spread, market_line)
     conn.close()
 
     grouped_flags = {
@@ -227,7 +234,7 @@ def game_detail(game_id):
     return render_template(
         "matchup.html", game=game, home=home, away=away,
         flags=grouped_flags, conflicting=conflicting, forecast=forecast, venue=venue,
-        model_spread=model_spread,
+        model_spread=model_spread, market_line=market_line, market_gap=gap,
     )
 
 

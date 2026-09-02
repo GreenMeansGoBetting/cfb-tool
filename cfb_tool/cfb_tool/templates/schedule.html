@@ -60,7 +60,15 @@ python3 ingest.py --year 2026</pre>
       </div>
       {% if g.moniker %}<div class="moniker">{{ g.moniker }}</div>{% endif %}
     </div>
-    <div class="kickoff" data-utc="{{ g.start_date }}">{{ g.start_date }}</div>
+    <div class="row-side">
+      {% if g.spread is not none or g.over_under is not none %}
+      <div class="odds" title="Spread is relative to the home team ({{ g.home_school }}); negative means they're favored">
+        {% if g.spread is not none %}{{ "%+.1f"|format(g.spread) }}{% else %}—{% endif %}
+        {% if g.over_under is not none %}&middot; {{ "%.1f"|format(g.over_under) }}{% endif %}
+      </div>
+      {% endif %}
+      <div class="kickoff" data-utc="{{ g.start_date }}">{{ g.start_date }}</div>
+    </div>
   </a>
   {% endfor %}
 </div>

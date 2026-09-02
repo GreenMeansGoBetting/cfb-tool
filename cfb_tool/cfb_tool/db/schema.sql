@@ -18,6 +18,23 @@ CREATE TABLE IF NOT EXISTS teams (
     logo_url    TEXT                  -- CFBD CDN logo, ~128px
 );
 
+-- Betting lines, sourced from CFBD's own /lines endpoint (it aggregates
+-- several sportsbooks — no separate odds API/account needed). One row
+-- per (game, sportsbook) since a game can carry several books' numbers;
+-- lines.py picks a single "consensus" one at query time rather than
+-- flattening to one book here, so nothing is thrown away on ingest.
+CREATE TABLE IF NOT EXISTS betting_lines (
+    game_id         INTEGER NOT NULL REFERENCES games(game_id),
+    provider        TEXT NOT NULL,
+    spread          REAL,     -- home-relative: negative = home favored
+    spread_open     REAL,
+    over_under      REAL,
+    over_under_open REAL,
+    home_moneyline  INTEGER,
+    away_moneyline  INTEGER,
+    PRIMARY KEY (game_id, provider)
+);
+
 CREATE TABLE IF NOT EXISTS coaches (
     coach_id    INTEGER PRIMARY KEY AUTOINCREMENT,
     first_name  TEXT,

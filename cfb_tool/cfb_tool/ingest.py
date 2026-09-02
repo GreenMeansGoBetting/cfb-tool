@@ -327,6 +327,41 @@ def sync_roster(client, conn, year):
     print(f"  {len(rows)} roster rows synced.")
 
 
+def sync_lines(client, conn, year):
+    print(f"Syncing betting lines for {year}...")
+    games = client.get_lines(year=year)
+    known_game_ids = {r[0] for r in conn.execute(
+        "SELECT game_id FROM games WHERE season = ?", (year,)
+    ).fetchall()}
+    rows = []
+    for g in games:
+        game_id = g.get("id")
+        if game_id not in known_game_ids:
+            continue
+        for line in g.get("lines", []):
+            provider = line.get("provider")
+            if not provider:
+                continue
+            rows.append((
+                game_id, provider, _to_float(line.get("spread")), _to_float(line.get("spreadOpen")),
+                _to_float(line.get("overUnder")), _to_float(line.get("overUnderOpen")),
+                line.get("homeMoneyline"), line.get("awayMoneyline"),
+            ))
+    conn.executemany(
+        """INSERT INTO betting_lines
+             (game_id, provider, spread, spread_open, over_under, over_under_open,
+              home_moneyline, away_moneyline)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(game_id, provider) DO UPDATE SET
+             spread=excluded.spread, spread_open=excluded.spread_open,
+             over_under=excluded.over_under, over_under_open=excluded.over_under_open,
+             home_moneyline=excluded.home_moneyline, away_moneyline=excluded.away_moneyline""",
+        rows,
+    )
+    conn.commit()
+    print(f"  {len(rows)} betting-line rows synced.")
+
+
 def sync_sp_plus(client, conn, year):
     print(f"Syncing SP+ ratings for {year}...")
     rows_raw = client.get_sp_plus(year=year)
@@ -406,6 +441,7 @@ def main():
             sync_returning_production(client, conn, args.year)
             sync_sp_plus(client, conn, args.year)
             sync_roster(client, conn, args.year)
+            sync_lines(client, conn, args.year)
         conn.execute(
             "INSERT INTO meta (key, value) VALUES ('last_updated', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
