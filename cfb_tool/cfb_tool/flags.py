@@ -10,6 +10,7 @@ clears its baseline threshold — the adjustable "sensitivity" setting only
 controls how many/how-strong flags a game needs to earn the schedule star,
 never which flags are hidden on the card itself.
 """
+import coordinator
 
 # Fixed noise-floor thresholds. Not user-adjustable — these decide whether
 # a gap is worth mentioning at all, as opposed to the star/moniker
@@ -271,6 +272,24 @@ def _weather_flags(forecast):
                   "Weather could affect scoring", lean="under")]
 
 
+def _coordinator_flags(conn, season, side, ctx):
+    team_id = ctx["team"]["team_id"]
+    team_name = ctx["team"]["school"]
+    flags = []
+    for hire in coordinator.new_coordinator_context(conn, team_id, season):
+        pct = hire["blended_run_rate"] * 100
+        lean = "run-leaning" if pct >= 55 else "pass-leaning" if pct <= 45 else "balanced"
+        text = (
+            f"New {hire['role']} at {team_name}: {hire['coach_name']}"
+            + (f" (previously at {hire['prior_team']})" if hire["prior_team"] else "")
+            + f". Blended tendency: {pct:.0f}% run rate ({lean}) — {hire['note']}"
+        )
+        moniker = f"{team_name} new {hire['role']}"
+        strength = abs(pct - 50)
+        flags.append(Flag("🆕", f"New {hire['role']}", text, side, "side", strength, 10.0, moniker))
+    return flags
+
+
 def compute_game_flags(conn, season, away, home, forecast=None):
     """away/home are team_matchup_context()-shaped dicts (offense/defense/team)."""
     flags = []
@@ -280,6 +299,8 @@ def compute_game_flags(conn, season, away, home, forecast=None):
     flags += _turnover_margin_flags("home", home)
     flags += _shootout_under_flags(conn, season, away, home)
     flags += _weather_flags(forecast)
+    flags += _coordinator_flags(conn, season, "away", away)
+    flags += _coordinator_flags(conn, season, "home", home)
     flags.sort(key=lambda f: f.score, reverse=True)
     return flags
 
