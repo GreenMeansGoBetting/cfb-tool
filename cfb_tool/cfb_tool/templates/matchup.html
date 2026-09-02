@@ -75,7 +75,7 @@
   {{ gm(ctx.games) }} this season
 {%- endmacro %}
 
-<a href="/?season={{ game.season }}&week={{ game.week }}" class="back-link">&larr; Back to schedule</a>
+<a href="/week/{{ game.season }}/{{ game.week }}" class="back-link">&larr; Back to schedule</a>
 
 <h1 class="matchup-title">
   {% if game.away_logo %}<img class="team-logo team-logo-lg" src="{{ game.away_logo }}" alt="">{% endif %}

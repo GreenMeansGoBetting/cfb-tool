@@ -75,11 +75,15 @@ def _season_weeks(conn, season):
     ).fetchall()]
 
 
-def _week_games(conn, season, week, sensitivity):
+def _week_games(conn, season, week):
     """Shared by the schedule and weekly-overview pages: every FBS game in
-    a week, each carrying its computed flags/star/moniker/market line so
-    both pages stay in sync without recomputing the same thing twice."""
-    star_threshold = SENSITIVITY_PRESETS.get(sensitivity, SENSITIVITY_PRESETS[DEFAULT_SENSITIVITY])
+    a week, each carrying its computed flags/moniker/market line plus a
+    raw signal score. Star/moniker sensitivity is applied CLIENT-SIDE (see
+    schedule.html/overview.html) against that raw score — this used to be
+    a server-side query param, which doesn't work once these pages are
+    static files with no server to re-query. Every game also carries a
+    default (medium-sensitivity) star flag so the page renders sensibly
+    before its JS has run."""
     raw_games = []
     if season and week:
         raw_games = conn.execute(
@@ -95,7 +99,7 @@ def _week_games(conn, season, week, sensitivity):
         ).fetchall()
 
     games = []
-    star_count = 0
+    default_star_count = 0
     snapshot_cache = {}
     game_lines = lines_engine.preferred_lines_for_games(conn, [g["game_id"] for g in raw_games])
 
@@ -109,68 +113,95 @@ def _week_games(conn, season, week, sensitivity):
         home_ctx = snapshot(g["home_team_id"])
         game_flags = flag_engine.compute_game_flags(conn, season, away_ctx, home_ctx)
         signal = sum(f.score for f in game_flags)
-        is_star = signal >= star_threshold
+        is_star = signal >= SENSITIVITY_PRESETS[DEFAULT_SENSITIVITY]
         if is_star:
-            star_count += 1
+            default_star_count += 1
         line = game_lines.get(g["game_id"])
         games.append({
             **dict(g),
             "flags": game_flags,
             "moniker": game_flags[0].moniker if game_flags else "",
+            "signal": round(signal, 3),
             "star": is_star,
             "spread": line["spread"] if line else None,
             "over_under": line["over_under"] if line else None,
         })
-    return games, star_count
+    return games, default_star_count
 
 
-@app.route("/")
-def schedule():
-    conn = get_conn()
-    team_count = conn.execute("SELECT COUNT(*) c FROM teams").fetchone()["c"]
-    last_updated = last_updated_display(conn)
-
+def _default_season_week(conn):
     seasons = [r["season"] for r in conn.execute(
         "SELECT DISTINCT season FROM games ORDER BY season DESC"
     ).fetchall()]
-    season = request.args.get("season", type=int) or (seasons[0] if seasons else None)
+    season = seasons[0] if seasons else None
     weeks = _season_weeks(conn, season)
-    week = request.args.get("week", type=int) or default_week(conn, season, weeks)
-    sensitivity = request.args.get("sensitivity", DEFAULT_SENSITIVITY)
-    if sensitivity not in SENSITIVITY_PRESETS:
-        sensitivity = DEFAULT_SENSITIVITY
+    week = default_week(conn, season, weeks)
+    return season, week, seasons, weeks
 
-    games, star_count = _week_games(conn, season, week, sensitivity)
+
+def _render_schedule(season, week):
+    conn = get_conn()
+    team_count = conn.execute("SELECT COUNT(*) c FROM teams").fetchone()["c"]
+    last_updated = last_updated_display(conn)
+    _, _, seasons, weeks = _default_season_week(conn)
+    if season not in seasons:
+        seasons = sorted(set(seasons) | {season}, reverse=True)
+    weeks = _season_weeks(conn, season)
+
+    games, star_count = _week_games(conn, season, week)
 
     conn.close()
     return render_template(
         "schedule.html", games=games, seasons=seasons, weeks=weeks,
         season=season, week=week, team_count=team_count, last_updated=last_updated,
-        sensitivity=sensitivity, star_count=star_count,
+        sensitivity=DEFAULT_SENSITIVITY, star_count=star_count,
+        sensitivity_presets=SENSITIVITY_PRESETS,
     )
 
 
-@app.route("/overview")
-def overview():
+def _render_overview(season, week):
     conn = get_conn()
-    seasons = [r["season"] for r in conn.execute(
-        "SELECT DISTINCT season FROM games ORDER BY season DESC"
-    ).fetchall()]
-    season = request.args.get("season", type=int) or (seasons[0] if seasons else None)
+    _, _, seasons, weeks = _default_season_week(conn)
+    if season not in seasons:
+        seasons = sorted(set(seasons) | {season}, reverse=True)
     weeks = _season_weeks(conn, season)
-    week = request.args.get("week", type=int) or default_week(conn, season, weeks)
-    sensitivity = request.args.get("sensitivity", DEFAULT_SENSITIVITY)
-    if sensitivity not in SENSITIVITY_PRESETS:
-        sensitivity = DEFAULT_SENSITIVITY
 
-    games, star_count = _week_games(conn, season, week, sensitivity)
-    top_games = [g for g in games if g["star"]]
+    games, star_count = _week_games(conn, season, week)
+    loosest = SENSITIVITY_PRESETS["loose"]
+    shown_games = [g for g in games if g["signal"] >= loosest]
 
     conn.close()
     return render_template(
-        "overview.html", games=top_games, seasons=seasons, weeks=weeks,
-        season=season, week=week, sensitivity=sensitivity, star_count=star_count,
+        "overview.html", games=shown_games, seasons=seasons, weeks=weeks,
+        season=season, week=week, sensitivity=DEFAULT_SENSITIVITY, star_count=star_count,
+        sensitivity_presets=SENSITIVITY_PRESETS,
     )
+
+
+@app.route("/")
+def schedule_root():
+    conn = get_conn()
+    season, week, _, _ = _default_season_week(conn)
+    conn.close()
+    return _render_schedule(season, week)
+
+
+@app.route("/week/<int:season>/<int:week>")
+def schedule(season, week):
+    return _render_schedule(season, week)
+
+
+@app.route("/overview")
+def overview_root():
+    conn = get_conn()
+    season, week, _, _ = _default_season_week(conn)
+    conn.close()
+    return _render_overview(season, week)
+
+
+@app.route("/overview/<int:season>/<int:week>")
+def overview(season, week):
+    return _render_overview(season, week)
 
 
 def _top_players(conn, team_id, season, category, limit=5):
@@ -270,21 +301,15 @@ def game_detail(game_id):
 
 @app.route("/teams")
 def teams():
+    """Conference filtering is client-side (see teams.html) -- no query
+    param to re-fetch against once this is a static file."""
     conn = get_conn()
-    conference = request.args.get("conference", "")
-    query = "SELECT * FROM teams"
-    params = []
-    if conference:
-        query += " WHERE conference = ?"
-        params.append(conference)
-    query += " ORDER BY school"
-    team_rows = conn.execute(query, params).fetchall()
+    team_rows = conn.execute("SELECT * FROM teams ORDER BY school").fetchall()
     conferences = [r["conference"] for r in conn.execute(
         "SELECT DISTINCT conference FROM teams WHERE conference IS NOT NULL ORDER BY conference"
     ).fetchall()]
     conn.close()
-    return render_template("teams.html", teams=team_rows,
-                            conferences=conferences, selected_conf=conference)
+    return render_template("teams.html", teams=team_rows, conferences=conferences)
 
 
 @app.route("/team/<int:team_id>")
@@ -326,31 +351,33 @@ def team_detail(team_id):
 
 @app.route("/players")
 def players():
+    """Category/stat-type used to be query params handled server-side —
+    that doesn't work once this is a static file with no server to
+    re-query. Instead this embeds every (category, stat_type) leaderboard
+    for the season as JSON and lets the dropdowns re-render from it
+    client-side (see leaderboard.html)."""
     conn = get_conn()
-    season = request.args.get("season", type=int)
-    category = request.args.get("category", "passing")
-    stat_type = request.args.get("stat_type", "YDS")
+    seasons = available_seasons(conn)
+    season = seasons[0] if seasons else None
 
-    if not season:
-        seasons = available_seasons(conn)
-        season = seasons[0] if seasons else None
-
-    rows = []
+    boards = {}
     if season:
         rows = conn.execute(
-            """SELECT player_name, team_name, stat_value
-               FROM player_season_stats
-               WHERE season = ? AND category = ? AND stat_type = ?
-               ORDER BY stat_value DESC LIMIT 50""",
-            (season, category, stat_type),
+            """SELECT category, stat_type, player_name, team_name, stat_value
+               FROM player_season_stats WHERE season = ?""",
+            (season,),
         ).fetchall()
+        by_combo = {}
+        for r in rows:
+            by_combo.setdefault((r["category"], r["stat_type"]), []).append(
+                {"player_name": r["player_name"], "team_name": r["team_name"], "stat_value": r["stat_value"]}
+            )
+        for (category, stat_type), combo_rows in by_combo.items():
+            combo_rows.sort(key=lambda r: r["stat_value"] or 0, reverse=True)
+            boards.setdefault(category, {})[stat_type] = combo_rows[:50]
 
-    seasons = available_seasons(conn)
     conn.close()
-    return render_template(
-        "leaderboard.html", rows=rows, seasons=seasons,
-        selected_season=season, category=category, stat_type=stat_type,
-    )
+    return render_template("leaderboard.html", boards=boards, season=season)
 
 
 @app.route("/coaches")

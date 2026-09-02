@@ -3,44 +3,42 @@
 {% block content %}
 
 <div class="filter-bar">
-  <form method="get" class="week-form">
+  <div class="week-form">
     <label>Season
-      <select name="season" onchange="this.form.submit()">
+      <select id="seasonSelect">
         {% for s in seasons %}
         <option value="{{ s }}" {% if s == season %}selected{% endif %}>{{ s }}</option>
         {% endfor %}
       </select>
     </label>
     <label>Week
-      <select name="week" onchange="this.form.submit()">
+      <select id="weekSelect">
         {% for w in weeks %}
         <option value="{{ w }}" {% if w == week %}selected{% endif %}>Week {{ w }}</option>
         {% endfor %}
       </select>
     </label>
-  </form>
-  <form method="get" class="sensitivity-form">
-    <input type="hidden" name="season" value="{{ season }}">
-    <input type="hidden" name="week" value="{{ week }}">
+  </div>
+  <div class="sensitivity-form">
     <label>Flag sensitivity
-      <select name="sensitivity" onchange="this.form.submit()">
-        <option value="loose" {% if sensitivity == "loose" %}selected{% endif %}>Loose</option>
-        <option value="medium" {% if sensitivity == "medium" %}selected{% endif %}>Medium</option>
-        <option value="strict" {% if sensitivity == "strict" %}selected{% endif %}>Strict</option>
+      <select id="sensitivitySelect">
+        <option value="loose">Loose</option>
+        <option value="medium" selected>Medium</option>
+        <option value="strict">Strict</option>
       </select>
     </label>
-  </form>
-  <a href="/?season={{ season }}&week={{ week }}" class="back-link overview-schedule-link">Full schedule &rarr;</a>
+  </div>
+  <a href="/week/{{ season }}/{{ week }}" class="back-link overview-schedule-link">Full schedule &rarr;</a>
 </div>
 
-<h1>Week {{ week }} Overview<span class="muted sub-count"> &middot; {{ star_count }} top matchup{{ "" if star_count == 1 else "s" }}</span></h1>
+<h1>Week {{ week }} Overview<span class="muted sub-count"> &middot; <span id="starCountText">{{ star_count }} top matchup{{ "" if star_count == 1 else "s" }}</span></span></h1>
 
 {% if not games %}
-<p class="muted">No top matchups at this sensitivity yet — try Loose, or check back once more of the week has data.</p>
+<p class="muted">No top matchups yet — check back once more of the week has data.</p>
 {% else %}
 <div class="overview-list" id="overviewList">
   {% for g in games %}
-  <a href="/game/{{ g.game_id }}" class="overview-card">
+  <a href="/game/{{ g.game_id }}" class="overview-card" data-signal="{{ g.signal }}">
     <div class="overview-card-header">
       <div class="matchup-teams">
         <span class="star">★</span>
@@ -68,9 +66,12 @@
   </a>
   {% endfor %}
 </div>
+<p class="muted" id="noneAtSensitivity" hidden>No top matchups at this sensitivity — try Loose.</p>
 {% endif %}
 
 <script>
+  var SENSITIVITY_PRESETS = {{ sensitivity_presets | tojson }};
+
   document.querySelectorAll('.kickoff[data-utc]').forEach(function (el) {
     var d = new Date(el.getAttribute('data-utc'));
     if (isNaN(d)) return;
@@ -93,6 +94,7 @@
       if (dateKey !== lastDateKey) {
         var divider = document.createElement('div');
         divider.className = 'day-divider';
+        divider.dataset.dateKey = dateKey;
         divider.textContent = d.toLocaleDateString(undefined, {
           weekday: 'long', month: 'long', day: 'numeric'
         });
@@ -101,5 +103,58 @@
       }
     });
   })();
+
+  // Flag sensitivity — client-side, re-groups day dividers too since
+  // hiding cards can leave a divider with nothing visible under it.
+  var sensitivitySelect = document.getElementById('sensitivitySelect');
+  var starCountText = document.getElementById('starCountText');
+  var noneMsg = document.getElementById('noneAtSensitivity');
+  function applySensitivity() {
+    var list = document.getElementById('overviewList');
+    if (!list) return;
+    var threshold = SENSITIVITY_PRESETS[sensitivitySelect.value];
+    var count = 0;
+    list.querySelectorAll('.overview-card').forEach(function (card) {
+      var signal = parseFloat(card.getAttribute('data-signal')) || 0;
+      var visible = signal >= threshold;
+      card.style.display = visible ? '' : 'none';
+      if (visible) count++;
+    });
+    list.querySelectorAll('.day-divider').forEach(function (divider) {
+      var visible = false;
+      var node = divider.nextElementSibling;
+      while (node && !node.classList.contains('day-divider')) {
+        if (node.classList.contains('overview-card') && node.style.display !== 'none') { visible = true; break; }
+        node = node.nextElementSibling;
+      }
+      divider.style.display = visible ? '' : 'none';
+    });
+    if (starCountText) starCountText.textContent = count + ' top matchup' + (count === 1 ? '' : 's');
+    if (noneMsg) noneMsg.hidden = count > 0;
+  }
+  if (sensitivitySelect) {
+    try {
+      var saved = localStorage.getItem('cfbSensitivity');
+      if (saved && SENSITIVITY_PRESETS[saved] !== undefined) sensitivitySelect.value = saved;
+    } catch (e) {}
+    sensitivitySelect.addEventListener('change', function () {
+      try { localStorage.setItem('cfbSensitivity', sensitivitySelect.value); } catch (e) {}
+      applySensitivity();
+    });
+    applySensitivity();
+  }
+
+  var seasonSelect = document.getElementById('seasonSelect');
+  var weekSelect = document.getElementById('weekSelect');
+  if (seasonSelect) {
+    seasonSelect.addEventListener('change', function () {
+      window.location.href = '/overview/' + seasonSelect.value + '/1';
+    });
+  }
+  if (weekSelect) {
+    weekSelect.addEventListener('change', function () {
+      window.location.href = '/overview/' + seasonSelect.value + '/' + weekSelect.value;
+    });
+  }
 </script>
 {% endblock %}

@@ -3,22 +3,22 @@
 {% block content %}
 <h1>Teams</h1>
 
-<form class="filter-bar" method="get">
+<div class="filter-bar">
   <label>Conference:
-    <select name="conference" onchange="this.form.submit()">
+    <select id="confSelect">
       <option value="">All</option>
       {% for c in conferences %}
-      <option value="{{ c }}" {% if c == selected_conf %}selected{% endif %}>{{ c }}</option>
+      <option value="{{ c }}">{{ c }}</option>
       {% endfor %}
     </select>
   </label>
-</form>
+</div>
 
 <table class="data-table">
   <thead><tr><th>School</th><th>Conference</th><th>Division</th></tr></thead>
-  <tbody>
+  <tbody id="teamsBody">
   {% for t in teams %}
-    <tr>
+    <tr data-conference="{{ t.conference or '' }}">
       <td><a href="/team/{{ t.team_id }}">{{ t.school }}</a></td>
       <td>{{ t.conference or "—" }}</td>
       <td>{{ t.division or "—" }}</td>
@@ -26,4 +26,14 @@
   {% endfor %}
   </tbody>
 </table>
+
+<script>
+  var confSelect = document.getElementById('confSelect');
+  confSelect.addEventListener('change', function () {
+    var val = confSelect.value;
+    document.querySelectorAll('#teamsBody tr').forEach(function (row) {
+      row.style.display = (!val || row.getAttribute('data-conference') === val) ? '' : 'none';
+    });
+  });
+</script>
 {% endblock %}

@@ -1,0 +1,68 @@
+name: Refresh data and deploy site
+
+on:
+  schedule:
+    # Daily refresh — matches the concept doc's "auto-refresh once daily"
+    # decision. Runs at 12:00 UTC (~7-8am US Eastern depending on DST).
+    - cron: "0 12 * * *"
+  workflow_dispatch: {}  # manual "Run workflow" button, for on-demand refresh
+  push:
+    branches: [main]
+    paths:
+      - "cfb_tool/cfb_tool/**"
+      - ".github/workflows/deploy.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    defaults:
+      run:
+        working-directory: cfb_tool/cfb_tool
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Ingest current season
+        env:
+          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+        # NOTE: bump this each year once the new season's data exists on
+        # CFBD (typically becomes available in the summer before kickoff).
+        run: python ingest.py --year 2026
+
+      - name: Ingest prior season
+        env:
+          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+        # Needed for the "who's actually back" / depth-chart lookups
+        # (returning.py, depth_chart.py both read season-1 stats) — bump
+        # alongside the line above.
+        run: python ingest.py --year 2025
+
+      - name: Build static site
+        run: python build_static.py --out dist
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: cfb_tool/cfb_tool/dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

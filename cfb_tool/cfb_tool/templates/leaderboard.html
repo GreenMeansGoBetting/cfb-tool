@@ -1,47 +1,78 @@
 {% extends "base.html" %}
 {% block title %}Player Leaderboards{% endblock %}
 {% block content %}
-<h1>Player Leaderboards</h1>
+<h1>Player Leaderboards <span class="muted sub-count">&middot; {{ season }}</span></h1>
 
-<form class="filter-bar" method="get">
-  <label>Season:
-    <select name="season" onchange="this.form.submit()">
-      {% for s in seasons %}
-      <option value="{{ s }}" {% if s == selected_season %}selected{% endif %}>{{ s }}</option>
-      {% endfor %}
-    </select>
-  </label>
+<div class="filter-bar">
   <label>Category:
-    <select name="category" onchange="this.form.submit()">
-      {% for c in ["passing", "rushing", "receiving"] %}
-      <option value="{{ c }}" {% if c == category %}selected{% endif %}>{{ c | capitalize }}</option>
+    <select id="categorySelect">
+      {% for c in boards.keys() %}
+      <option value="{{ c }}">{{ c | capitalize }}</option>
       {% endfor %}
     </select>
   </label>
   <label>Stat:
-    <select name="stat_type" onchange="this.form.submit()">
-      {% for st in ["YDS", "TD", "ATT", "CAR", "REC", "INT"] %}
-      <option value="{{ st }}" {% if st == stat_type %}selected{% endif %}>{{ st }}</option>
-      {% endfor %}
-    </select>
+    <select id="statSelect"></select>
   </label>
-</form>
+</div>
 
-{% if rows %}
-<table class="data-table">
-  <thead><tr><th>#</th><th>Player</th><th>Team</th><th>{{ stat_type }}</th></tr></thead>
-  <tbody>
-  {% for r in rows %}
-    <tr>
-      <td>{{ loop.index }}</td>
-      <td>{{ r.player_name }}</td>
-      <td>{{ r.team_name }}</td>
-      <td>{{ r.stat_value | round(0) }}</td>
-    </tr>
-  {% endfor %}
-  </tbody>
+<table class="data-table" id="leaderboardTable">
+  <thead><tr><th>#</th><th>Player</th><th>Team</th><th id="statHeader">Stat</th></tr></thead>
+  <tbody id="leaderboardBody"></tbody>
 </table>
-{% else %}
-<p class="muted">No data for this combination yet — try a different season, category, or stat, or run the ingest script.</p>
-{% endif %}
+<p class="muted" id="emptyMessage" hidden>No data for this combination yet.</p>
+
+<script type="application/json" id="boardsData">{{ boards | tojson }}</script>
+<script>
+  var boards = JSON.parse(document.getElementById('boardsData').textContent);
+  var categorySelect = document.getElementById('categorySelect');
+  var statSelect = document.getElementById('statSelect');
+  var body = document.getElementById('leaderboardBody');
+  var statHeader = document.getElementById('statHeader');
+  var emptyMessage = document.getElementById('emptyMessage');
+  var table = document.getElementById('leaderboardTable');
+
+  function populateStats() {
+    var category = categorySelect.value;
+    var stats = Object.keys(boards[category] || {});
+    statSelect.innerHTML = '';
+    stats.forEach(function (st) {
+      var opt = document.createElement('option');
+      opt.value = st;
+      opt.textContent = st;
+      statSelect.appendChild(opt);
+    });
+  }
+
+  function render() {
+    var category = categorySelect.value;
+    var stat = statSelect.value;
+    var rows = (boards[category] && boards[category][stat]) || [];
+    statHeader.textContent = stat || 'Stat';
+    body.innerHTML = '';
+    if (!rows.length) {
+      table.hidden = true;
+      emptyMessage.hidden = false;
+      return;
+    }
+    table.hidden = false;
+    emptyMessage.hidden = true;
+    rows.forEach(function (r, i) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + (i + 1) + '</td><td>' + r.player_name + '</td><td>' + r.team_name + '</td><td>' + Math.round(r.stat_value) + '</td>';
+      body.appendChild(tr);
+    });
+  }
+
+  categorySelect.addEventListener('change', function () { populateStats(); render(); });
+  statSelect.addEventListener('change', render);
+
+  if (Object.keys(boards).length) {
+    populateStats();
+    render();
+  } else {
+    table.hidden = true;
+    emptyMessage.hidden = false;
+  }
+</script>
 {% endblock %}
