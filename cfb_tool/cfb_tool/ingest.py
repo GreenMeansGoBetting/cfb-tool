@@ -107,25 +107,48 @@ def _ensure_teams_exist(conn, games):
               f"{' ...' if len(stubs) > 5 else ''}")
 
 
+def sync_venues(client, conn):
+    print("Syncing venues...")
+    venues = client.get_venues()
+    rows = [
+        (v.get("id"), v.get("name"), v.get("city"), v.get("state"),
+         int(bool(v.get("dome"))), v.get("latitude"), v.get("longitude"))
+        for v in venues if v.get("id") is not None
+    ]
+    conn.executemany(
+        """INSERT INTO venues (venue_id, name, city, state, dome, latitude, longitude)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(venue_id) DO UPDATE SET
+             name=excluded.name, city=excluded.city, state=excluded.state,
+             dome=excluded.dome, latitude=excluded.latitude, longitude=excluded.longitude""",
+        rows,
+    )
+    conn.commit()
+    print(f"  {len(rows)} venues synced.")
+
+
 def sync_games(client, conn, year):
     print(f"Syncing games for {year}...")
     games = client.get_games(year=year)
     _ensure_teams_exist(conn, games)
+    known_venue_ids = {r[0] for r in conn.execute("SELECT venue_id FROM venues").fetchall()}
     rows = [
         (g.get("id"), g.get("season"), g.get("week"), g.get("seasonType"),
          g.get("startDate"), g.get("homeId") or g.get("home_id"),
          g.get("awayId") or g.get("away_id"),
          g.get("homePoints"), g.get("awayPoints"), g.get("venue"),
+         g.get("venueId") if g.get("venueId") in known_venue_ids else None,
          int(bool(g.get("conferenceGame"))), int(bool(g.get("neutralSite"))))
         for g in games if g.get("id") is not None
     ]
     conn.executemany(
         """INSERT INTO games (game_id, season, week, season_type, start_date,
-             home_team_id, away_team_id, home_points, away_points, venue,
+             home_team_id, away_team_id, home_points, away_points, venue, venue_id,
              conference_game, neutral_site)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(game_id) DO UPDATE SET
-             home_points=excluded.home_points, away_points=excluded.away_points""",
+             home_points=excluded.home_points, away_points=excluded.away_points,
+             venue_id=excluded.venue_id""",
         rows,
     )
     conn.commit()
@@ -261,6 +284,36 @@ def _to_float(val):
         return None
 
 
+def sync_roster(client, conn, year):
+    print(f"Syncing roster for {year}...")
+    roster = client.get_roster(year=year)
+    rows = []
+    for p in roster:
+        pid = p.get("id")
+        if pid is None:
+            continue
+        team_row = conn.execute(
+            "SELECT team_id FROM teams WHERE school = ?", (p.get("team"),)
+        ).fetchone()
+        name = f"{p.get('firstName') or ''} {p.get('lastName') or ''}".strip()
+        home_town = ", ".join(filter(None, [p.get("homeCity"), p.get("homeState")])) or None
+        rows.append((
+            pid, year, name, team_row[0] if team_row else None, p.get("position"),
+            p.get("year"), p.get("height"), p.get("weight"), home_town,
+        ))
+    conn.executemany(
+        """INSERT INTO players (player_id, season, name, team_id, position, year, height, weight, home_town)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(player_id, season) DO UPDATE SET
+             name=excluded.name, team_id=excluded.team_id, position=excluded.position,
+             year=excluded.year, height=excluded.height, weight=excluded.weight,
+             home_town=excluded.home_town""",
+        rows,
+    )
+    conn.commit()
+    print(f"  {len(rows)} roster rows synced.")
+
+
 def sync_sp_plus(client, conn, year):
     print(f"Syncing SP+ ratings for {year}...")
     rows_raw = client.get_sp_plus(year=year)
@@ -333,11 +386,13 @@ def main():
         sync_teams(client, conn, args.year)
         sync_coaches(client, conn, args.year)
         if not args.teams_only:
+            sync_venues(client, conn)
             sync_games(client, conn, args.year)
             sync_team_game_stats(client, conn, args.year)
             sync_player_season_stats(client, conn, args.year)
             sync_returning_production(client, conn, args.year)
             sync_sp_plus(client, conn, args.year)
+            sync_roster(client, conn, args.year)
         conn.execute(
             "INSERT INTO meta (key, value) VALUES ('last_updated', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",

@@ -46,8 +46,22 @@ CREATE TABLE IF NOT EXISTS games (
     home_points     INTEGER,
     away_points     INTEGER,
     venue           TEXT,
+    venue_id        INTEGER REFERENCES venues(venue_id),
     conference_game INTEGER DEFAULT 0,
     neutral_site    INTEGER DEFAULT 0
+);
+
+-- Venue locations, sourced from CFBD's /venues endpoint — used to fetch
+-- live weather forecasts (see weather.py) and to skip weather entirely
+-- for dome games, where it's not a factor.
+CREATE TABLE IF NOT EXISTS venues (
+    venue_id    INTEGER PRIMARY KEY,   -- CFBD venue id
+    name        TEXT,
+    city        TEXT,
+    state       TEXT,
+    dome        INTEGER DEFAULT 0,
+    latitude    REAL,
+    longitude   REAL
 );
 
 CREATE TABLE IF NOT EXISTS team_game_stats (
@@ -71,20 +85,27 @@ CREATE TABLE IF NOT EXISTS team_game_stats (
     PRIMARY KEY (game_id, team_id)
 );
 
+-- Roster snapshot, sourced from CFBD's /roster endpoint — one row per
+-- player per season (a player who's on multiple seasons' rosters gets
+-- multiple rows). This is what lets returning.py answer "is last year's
+-- top producer actually still on this team" instead of just trusting a
+-- team-wide returning-production percentage.
 CREATE TABLE IF NOT EXISTS players (
-    player_id       INTEGER PRIMARY KEY,   -- CFBD athlete id
+    player_id       INTEGER NOT NULL,   -- CFBD athlete id
+    season          INTEGER NOT NULL,
     name            TEXT NOT NULL,
     team_id         INTEGER REFERENCES teams(team_id),
     position        TEXT,
-    year            TEXT,               -- FR/SO/JR/SR
+    year            TEXT,               -- class year (CFBD returns this as a number, e.g. 4)
     height          INTEGER,
     weight          INTEGER,
-    home_town       TEXT
+    home_town       TEXT,
+    PRIMARY KEY (player_id, season)
 );
 
 CREATE TABLE IF NOT EXISTS player_game_stats (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    player_id       INTEGER NOT NULL REFERENCES players(player_id),
+    player_id       INTEGER NOT NULL,
     game_id         INTEGER NOT NULL REFERENCES games(game_id),
     team_id         INTEGER REFERENCES teams(team_id),
     season          INTEGER NOT NULL,
@@ -104,7 +125,8 @@ CREATE TABLE IF NOT EXISTS player_game_stats (
     receptions        INTEGER,
     rec_yards         INTEGER,
     rec_td            INTEGER,
-    UNIQUE(player_id, game_id, category)
+    UNIQUE(player_id, game_id, category),
+    FOREIGN KEY (player_id, season) REFERENCES players(player_id, season)
 );
 
 -- Derived / computed table — rebuilt by ingest.py's tendency calculator,

@@ -11,6 +11,8 @@ from db.db import get_conn
 import flags as flag_engine
 import blending
 import sos
+import weather as weather_engine
+import returning
 
 app = Flask(__name__)
 
@@ -178,6 +180,7 @@ def team_matchup_context(conn, team_id, season):
     ctx["passing"] = _top_players(conn, team_id, season, "passing")
     ctx["rushing"] = _top_players(conn, team_id, season, "rushing")
     ctx["receiving"] = _top_players(conn, team_id, season, "receiving")
+    ctx["key_returners"] = returning.key_returners(conn, team_id, season)
     return ctx
 
 
@@ -198,7 +201,13 @@ def game_detail(game_id):
 
     home = team_matchup_context(conn, game["home_team_id"], game["season"])
     away = team_matchup_context(conn, game["away_team_id"], game["season"])
-    all_flags = flag_engine.compute_game_flags(conn, game["season"], away, home)
+
+    venue = None
+    if game["venue_id"]:
+        venue = conn.execute("SELECT * FROM venues WHERE venue_id = ?", (game["venue_id"],)).fetchone()
+    forecast = weather_engine.game_forecast(venue, game["start_date"], datetime.now(timezone.utc))
+
+    all_flags = flag_engine.compute_game_flags(conn, game["season"], away, home, forecast=forecast)
     conn.close()
 
     grouped_flags = {
@@ -210,7 +219,7 @@ def game_detail(game_id):
 
     return render_template(
         "matchup.html", game=game, home=home, away=away,
-        flags=grouped_flags, conflicting=conflicting,
+        flags=grouped_flags, conflicting=conflicting, forecast=forecast, venue=venue,
     )
 
 

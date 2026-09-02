@@ -17,8 +17,13 @@ never which flags are hidden on the card itself.
 TEMPO_DIFF_THRESHOLD = 6.0          # plays/game
 RUSH_MATCHUP_THRESHOLD = 40.0       # yards/game
 PASS_MATCHUP_THRESHOLD = 50.0       # yards/game
+OVERALL_RANK_GAP_SUPPRESS = 40      # national SP+ rank spots — suppresses a raw gap SP+ contradicts
+CORROBORATE_RANK_GAP = 60           # national SP+ rank spots — fires a sub-threshold raw gap SP+ backs up
 TURNOVER_MARGIN_THRESHOLD = 1.0     # per game
 SHOOTOUT_UNDER_THRESHOLD = 40.0     # yards/game off the FBS average
+WIND_THRESHOLD_MPH = 15             # sustained/gust wind worth flagging
+COLD_THRESHOLD_F = 25               # temperature worth flagging
+PRECIP_THRESHOLD_PCT = 50           # chance of precipitation worth flagging
 
 
 # The schedule page recomputes flags for every game in a week — cache this
@@ -102,8 +107,38 @@ def _matchup_advantage_flags(off_side, off_ctx, def_side, def_ctx, stat_key, pg_
     if off_pg is None or def_pg is None:
         return []
     gap = off_pg - def_pg
-    if gap < threshold:
+
+    # Raw per-game numbers aren't comparable across teams who've faced
+    # very different schedules — a bad team's yardage against a weak
+    # slate can out-number a great team's yardage-allowed against a
+    # strong one, with the raw gap alone saying nothing true about who'd
+    # actually win this matchup. Cross-check against each team's OVERALL
+    # SP+ national rank (opponent-adjusted, and unambiguous — no sign or
+    # scale-mixing risk the way subtracting offense/defense sub-ratings
+    # would have) in BOTH directions:
+    #   - a raw gap that clears the threshold gets suppressed if SP+
+    #     flatly contradicts it (offense's team ranked way worse overall
+    #     than the defense's team — the false-positive case)
+    #   - a raw gap that's positive but doesn't clear the threshold can
+    #     still fire if SP+ strongly corroborates it (a real mismatch
+    #     that raw numbers alone understate, e.g. a great offense whose
+    #     opponent's weak-schedule "yards allowed" looks unremarkable) —
+    #     the false-negative case
+    off_sp = off_ctx.get("sp_plus")
+    def_sp = def_ctx.get("sp_plus")
+    rank_gap = None  # positive = defense's team ranked worse overall (favors the offense)
+    if off_sp and def_sp and off_sp["ranking"] is not None and def_sp["ranking"] is not None:
+        rank_gap = def_sp["ranking"] - off_sp["ranking"]
+
+    raw_clears = gap >= threshold
+    sp_contradicts = rank_gap is not None and rank_gap <= -OVERALL_RANK_GAP_SUPPRESS
+    sp_corroborates = gap > 0 and rank_gap is not None and rank_gap >= CORROBORATE_RANK_GAP
+
+    if raw_clears and sp_contradicts:
         return []
+    if not raw_clears and not sp_corroborates:
+        return []
+
     off_name = off_ctx["team"]["school"]
     def_name = def_ctx["team"]["school"]
     text = (
@@ -111,8 +146,25 @@ def _matchup_advantage_flags(off_side, off_ctx, def_side, def_ctx, stat_key, pg_
         f"({_sample_phrase(off_ctx['offense'])}) — {def_name} allows "
         f"{def_pg:.0f} {label} yds/game on defense ({_sample_phrase(def_ctx['defense'])})."
     )
+    if raw_clears and rank_gap is not None:
+        text += (
+            f" Overall SP+ doesn't contradict it either: {off_name} #{off_sp['ranking']} nat'l, "
+            f"{def_name} #{def_sp['ranking']} nat'l."
+        )
+    elif sp_corroborates:
+        text += (
+            f" The raw gap alone is modest, but opponent-adjusted SP+ is decisive here: "
+            f"{off_name}'s offense (#{off_sp['ranking']} nat'l) is far ahead of "
+            f"{def_name}'s defense (#{def_sp['ranking']} nat'l overall) — the raw number likely "
+            f"understates this given the schedules each team's faced."
+        )
     moniker = f"{off_name} {label} advantage"
-    return [Flag(icon, f"{label.title()} matchup", text, off_side, "side", gap, threshold, moniker)]
+    # Strength drives the score used for the schedule star/moniker — when
+    # the raw gap itself doesn't clear the bar and SP+ is doing the work,
+    # treat it as a baseline (not-yet-more-confident-than-that) flag
+    # rather than scoring it near zero off a tiny raw gap.
+    strength = gap if raw_clears else threshold
+    return [Flag(icon, f"{label.title()} matchup", text, off_side, "side", strength, threshold, moniker)]
 
 
 def _rush_pass_flags(away, home):
@@ -168,7 +220,41 @@ def _shootout_under_flags(conn, season, away, home):
     return []
 
 
-def compute_game_flags(conn, season, away, home):
+def _weather_flags(forecast):
+    if not forecast:
+        return []
+    wind = forecast["wind_mph"]
+    temp = forecast["temperature"]
+    precip = forecast["precip_pct"]
+    hit_wind = wind is not None and wind >= WIND_THRESHOLD_MPH
+    hit_cold = temp is not None and forecast["temperature_unit"] == "F" and temp <= COLD_THRESHOLD_F
+    hit_precip = precip is not None and precip >= PRECIP_THRESHOLD_PCT
+    if not (hit_wind or hit_cold or hit_precip):
+        return []
+
+    bits = []
+    if temp is not None:
+        bits.append(f"{temp}°{forecast['temperature_unit']}")
+    if wind is not None:
+        bits.append(f"wind {wind} mph" + (f" {forecast['wind_direction']}" if forecast["wind_direction"] else ""))
+    if precip is not None:
+        bits.append(f"{precip}% chance of precipitation")
+    conditions = ", ".join(bits) if bits else (forecast.get("short_forecast") or "adverse conditions")
+
+    strength = max(
+        (wind - WIND_THRESHOLD_MPH) if hit_wind else 0,
+        (COLD_THRESHOLD_F - temp) if hit_cold else 0,
+        (precip - PRECIP_THRESHOLD_PCT) / 5 if hit_precip else 0,
+    )
+    text = (
+        f"Forecast at kickoff: {conditions} ({forecast.get('short_forecast', '')}) "
+        f"— conditions like this tend to suppress passing efficiency and total scoring."
+    )
+    return [Flag("🌧", "Weather", text, "both", "total", strength, 5.0,
+                  "Weather could affect scoring", lean="under")]
+
+
+def compute_game_flags(conn, season, away, home, forecast=None):
     """away/home are team_matchup_context()-shaped dicts (offense/defense/team)."""
     flags = []
     flags += _tempo_flags(away, home)
@@ -176,6 +262,7 @@ def compute_game_flags(conn, season, away, home):
     flags += _turnover_margin_flags("away", away)
     flags += _turnover_margin_flags("home", home)
     flags += _shootout_under_flags(conn, season, away, home)
+    flags += _weather_flags(forecast)
     flags.sort(key=lambda f: f.score, reverse=True)
     return flags
 

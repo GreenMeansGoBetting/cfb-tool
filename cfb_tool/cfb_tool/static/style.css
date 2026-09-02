@@ -228,6 +228,9 @@ select {
 }
 .advanced-row td { color: var(--muted); font-style: italic; border-top: 1px dashed var(--border); }
 .sos-note { margin-top: -8px; margin-bottom: 12px; }
+.returners-note { margin-top: -8px; margin-bottom: 12px; }
+.returner-back { color: var(--text); font-weight: 600; }
+.returner-gone { color: var(--accent-2); font-weight: 600; }
 
 .flag-conflict {
   background: rgba(217, 79, 79, 0.12);

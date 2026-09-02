@@ -27,6 +27,16 @@
   {%- endif -%}
 {%- endmacro %}
 
+{% macro key_returners_line(list) -%}
+  {%- if not list -%}
+    no roster data yet to check who's back
+  {%- else -%}
+    {%- for r in list -%}
+      {{ r.name }} ({{ r.category }}, {{ r.stat_value | round(0) | int if r.stat_value is not none else "—" }} {{ r.stat_label|lower }} last season){% if r.returning is none %} — unknown{% elif r.returning %} — <span class="returner-back">back</span>{% else %} — <span class="returner-gone">departed</span>{% endif %}{% if not loop.last %} &middot; {% endif %}
+    {%- endfor -%}
+  {%- endif -%}
+{%- endmacro %}
+
 {% macro blend_note(ctx) -%}
   {%- if ctx.is_blended -%}
     {%- if ctx.games == 0 -%}
@@ -94,6 +104,11 @@
     {{ game.away_school }}: {{ sos_line(away.sos, 'offense') }} &middot;
     {{ game.home_school }}: {{ sos_line(home.sos, 'defense') }}
   </p>
+  {% if away.offense.is_blended %}
+  <p class="muted sample-note returners-note">
+    {{ game.away_school }} — who's actually back: {{ key_returners_line(away.key_returners) }}
+  </p>
+  {% endif %}
   <table class="data-table">
     <thead><tr><th>Stat (per game)</th><th>{{ game.away_school }} offense</th><th>{{ game.home_school }} defense allowed</th></tr></thead>
     <tbody>
@@ -118,6 +133,11 @@
     {{ game.home_school }}: {{ sos_line(home.sos, 'offense') }} &middot;
     {{ game.away_school }}: {{ sos_line(away.sos, 'defense') }}
   </p>
+  {% if home.offense.is_blended %}
+  <p class="muted sample-note returners-note">
+    {{ game.home_school }} — who's actually back: {{ key_returners_line(home.key_returners) }}
+  </p>
+  {% endif %}
   <table class="data-table">
     <thead><tr><th>Stat (per game)</th><th>{{ game.home_school }} offense</th><th>{{ game.away_school }} defense allowed</th></tr></thead>
     <tbody>

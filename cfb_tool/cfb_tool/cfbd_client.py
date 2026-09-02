@@ -69,6 +69,10 @@ class CFBDClient:
             params["week"] = week
         return self._get("/games", params)
 
+    def get_venues(self):
+        """Static list of every venue CFBD knows about — not year-scoped."""
+        return self._get("/venues")
+
     def get_team_game_stats(self, year, week=None, team=None):
         params = {"year": year}
         if week:
