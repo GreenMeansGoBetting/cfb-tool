@@ -52,8 +52,10 @@ python3 ingest.py --year 2026</pre>
     <div class="row-main">
       <div class="matchup-teams">
         {% if g.star %}<span class="star" title="Top matchup — see the flags on the matchup card">★</span>{% endif %}
+        {% if g.away_logo %}<img class="team-logo" src="{{ g.away_logo }}" alt="" loading="lazy">{% endif %}
         <span class="team-name">{{ g.away_school }}</span>
         <span class="at">@</span>
+        {% if g.home_logo %}<img class="team-logo" src="{{ g.home_logo }}" alt="" loading="lazy">{% endif %}
         <span class="team-name">{{ g.home_school }}</span>
       </div>
       {% if g.moniker %}<div class="moniker">{{ g.moniker }}</div>{% endif %}

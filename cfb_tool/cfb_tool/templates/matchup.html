@@ -51,7 +51,11 @@
 
 <a href="/?season={{ game.season }}&week={{ game.week }}" class="back-link">&larr; Back to schedule</a>
 
-<h1>{{ game.away_school }} @ {{ game.home_school }}</h1>
+<h1 class="matchup-title">
+  {% if game.away_logo %}<img class="team-logo team-logo-lg" src="{{ game.away_logo }}" alt="">{% endif %}
+  {{ game.away_school }} @ {{ game.home_school }}
+  {% if game.home_logo %}<img class="team-logo team-logo-lg" src="{{ game.home_logo }}" alt="">{% endif %}
+</h1>
 <p class="sub">
   <span class="kickoff" data-utc="{{ game.start_date }}">{{ game.start_date }}</span>
   {% if game.venue %} &middot; {{ game.venue }}{% endif %}

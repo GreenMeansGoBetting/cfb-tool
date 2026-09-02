@@ -13,20 +13,33 @@ from db.db import get_conn, init_db
 from cfbd_client import CFBDClient
 
 
+def _pick_logo(logos):
+    """CFBD returns a list of CDN URLs at several sizes — pick the ~128px
+    one (small enough to load fast, big enough not to blur at the sizes
+    this app displays it)."""
+    if not logos:
+        return None
+    for url in logos:
+        if "/128/" in url:
+            return url
+    return logos[0]
+
+
 def sync_teams(client, conn, year):
     print(f"Syncing teams for {year}...")
     teams = client.get_teams(year=year)
     rows = [
         (t.get("id"), t.get("school"), t.get("conference"),
-         t.get("division"), t.get("classification"))
+         t.get("division"), t.get("classification"), _pick_logo(t.get("logos")))
         for t in teams if t.get("id") is not None
     ]
     conn.executemany(
-        """INSERT INTO teams (team_id, school, conference, division, classification)
-           VALUES (?, ?, ?, ?, ?)
+        """INSERT INTO teams (team_id, school, conference, division, classification, logo_url)
+           VALUES (?, ?, ?, ?, ?, ?)
            ON CONFLICT(team_id) DO UPDATE SET
              school=excluded.school, conference=excluded.conference,
-             division=excluded.division, classification=excluded.classification""",
+             division=excluded.division, classification=excluded.classification,
+             logo_url=excluded.logo_url""",
         rows,
     )
     conn.commit()

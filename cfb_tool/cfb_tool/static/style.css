@@ -178,6 +178,27 @@ select {
 .matchup-teams { display: flex; align-items: center; gap: 10px; font-weight: 600; }
 .matchup-teams .at { color: var(--muted); font-weight: 400; }
 .matchup-teams .star { color: #e0b13c; }
+.team-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  background: #f4f4f4;
+  border-radius: 5px;
+  padding: 2px;
+  flex-shrink: 0;
+}
+.matchup-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.team-logo-lg {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  padding: 3px;
+}
 .moniker { color: var(--accent); font-size: 0.82rem; }
 .kickoff { color: var(--muted); font-size: 0.9rem; white-space: nowrap; }
 .sensitivity-form label { color: var(--muted); font-size: 0.9rem; }

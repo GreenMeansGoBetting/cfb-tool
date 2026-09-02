@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS teams (
     school      TEXT NOT NULL,
     conference  TEXT,
     division    TEXT,
-    classification TEXT               -- fbs / fcs
+    classification TEXT,              -- fbs / fcs
+    logo_url    TEXT                  -- CFBD CDN logo, ~128px
 );
 
 CREATE TABLE IF NOT EXISTS coaches (

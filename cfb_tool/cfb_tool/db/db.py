@@ -18,6 +18,7 @@ def get_conn():
 # ran once, so each entry here is applied by init_db() if missing.
 _MIGRATIONS = [
     ("games", "venue_id", "INTEGER REFERENCES venues(venue_id)"),
+    ("teams", "logo_url", "TEXT"),
 ]
 
 

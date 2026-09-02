@@ -91,7 +91,8 @@ def schedule():
     raw_games = []
     if season and week:
         raw_games = conn.execute(
-            """SELECT g.*, ht.school AS home_school, at.school AS away_school
+            """SELECT g.*, ht.school AS home_school, at.school AS away_school,
+                      ht.logo_url AS home_logo, at.logo_url AS away_logo
                FROM games g
                JOIN teams ht ON g.home_team_id = ht.team_id
                JOIN teams at ON g.away_team_id = at.team_id
@@ -193,8 +194,8 @@ def team_matchup_context(conn, team_id, season):
 def game_detail(game_id):
     conn = get_conn()
     game = conn.execute(
-        """SELECT g.*, ht.school AS home_school, ht.conference AS home_conf,
-                  at.school AS away_school, at.conference AS away_conf
+        """SELECT g.*, ht.school AS home_school, ht.conference AS home_conf, ht.logo_url AS home_logo,
+                  at.school AS away_school, at.conference AS away_conf, at.logo_url AS away_logo
            FROM games g
            JOIN teams ht ON g.home_team_id = ht.team_id
            JOIN teams at ON g.away_team_id = at.team_id
