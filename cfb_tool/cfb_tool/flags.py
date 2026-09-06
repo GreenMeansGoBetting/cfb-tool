@@ -21,6 +21,9 @@ PASS_MATCHUP_THRESHOLD = 50.0       # yards/game
 OVERALL_RANK_GAP_SUPPRESS = 40      # national SP+ rank spots — suppresses a raw gap SP+ contradicts
 CORROBORATE_RANK_GAP = 60           # national SP+ rank spots — fires a sub-threshold raw gap SP+ backs up
 TURNOVER_MARGIN_THRESHOLD = 1.0     # per game
+MIN_GAMES_FOR_RATE_FLAGS = 2        # tempo/turnover have no opponent-adjusted sanity check like the
+                                     # matchup/shootout flags do, so a single game's raw rate stat
+                                     # (noisy by definition) can't earn a flag on its own yet
 SHOOTOUT_UNDER_THRESHOLD = 40.0     # yards/game off the FBS average
 WIND_THRESHOLD_MPH = 15             # sustained/gust wind worth flagging
 COLD_THRESHOLD_F = 25               # temperature worth flagging
@@ -78,6 +81,8 @@ def _tempo_flags(away, home):
     a_pace = away["offense"]["plays_pg"]
     h_pace = home["offense"]["plays_pg"]
     if a_pace is None or h_pace is None:
+        return []
+    if away["offense"]["games"] < MIN_GAMES_FOR_RATE_FLAGS or home["offense"]["games"] < MIN_GAMES_FOR_RATE_FLAGS:
         return []
     diff = a_pace - h_pace
     if abs(diff) < TEMPO_DIFF_THRESHOLD:
@@ -174,6 +179,8 @@ def _turnover_margin_flags(side, ctx):
     off = ctx["offense"]
     de = ctx["defense"]
     if off["to_pg"] is None or de["to_pg"] is None:
+        return []
+    if off["games"] < MIN_GAMES_FOR_RATE_FLAGS:
         return []
     margin = de["to_pg"] - off["to_pg"]  # forced minus committed, per game
     if abs(margin) < TURNOVER_MARGIN_THRESHOLD:
