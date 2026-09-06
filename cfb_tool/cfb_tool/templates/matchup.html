@@ -2,8 +2,8 @@
 {% block title %}{{ game.away_school }} @ {{ game.home_school }}{% endblock %}
 {% block content %}
 
-{% macro fmt(val, decimals=1) -%}
-  {%- if val is none -%}—{%- else -%}{{ (("%." ~ decimals ~ "f") % val) }}{%- endif -%}
+{% macro fmt(val) -%}
+  {%- if val is none -%}—{%- else -%}{{ val|round|int }}{%- endif -%}
 {%- endmacro %}
 
 {% macro pctval(val) -%}
@@ -15,7 +15,13 @@
 {%- endmacro %}
 
 {% macro sprating(rating, ranking) -%}
-  {%- if rating is none -%}—{%- else -%}{{ "%.1f"|format(rating) }}{% if ranking %} (#{{ ranking }} nat'l){% endif %}{%- endif -%}
+  {%- if rating is none -%}—{%- else -%}{{ rating|round|int }}{% if ranking %} (#{{ ranking }} nat'l){% endif %}{%- endif -%}
+{%- endmacro %}
+
+{% macro rank_chip(badge) -%}
+  {%- if badge -%}
+    <span class="rank-chip tier-{{ badge.tier }}" title="{{ badge.rank }} of {{ badge.total }} FBS teams{% if badge.tier == 'muted' %} — raw number and opponent-adjusted SP+ rank disagree here, so the color isn't trustworthy{% endif %}">#{{ badge.rank }}</span>
+  {%- endif -%}
 {%- endmacro %}
 
 {% macro sos_line(ctx, side) -%}
@@ -56,19 +62,21 @@
 
 {% macro projections_section(list, opp_school) -%}
   {% if list %}
-  <h3>This Week — Rough Projections</h3>
+  <h3>Next Game — Rough Projection vs. {{ opp_school }}</h3>
   <p class="muted depth-chart-disclaimer">Each player's own current-season pace, adjusted by how {{ opp_school }}'s defense has allowed that stat category vs. the FBS average — a rough ratio, not a calibrated model. Raw numbers behind the adjustment shown alongside it.</p>
   <table class="data-table player-table projections-table">
+    <thead><tr><th>Player</th><th>Pace</th><th>GP</th><th>Projected vs. {{ opp_school }}</th></tr></thead>
     <tbody>
     {% for p in list %}
       <tr>
         <td>{{ p.name }} <span class="proj-category">({{ p.category }})</span></td>
+        <td>{{ p.avg_yards|round|int }} yds/gm{% if p.avg_td is not none %} &middot; {{ "%.1f"|format(p.avg_td) }} TD/gm{% endif %}</td>
+        <td>{{ p.games }}</td>
         <td>
-          {{ p.avg_yards|round(0)|int }} yds/gm{% if p.avg_td is not none %} &middot; {{ "%.1f"|format(p.avg_td) }} TD/gm{% endif %} ({{ gm(p.games) }})
-          {%- if p.projected_yards is not none %}
-            &rarr; ~{{ p.projected_yards|round(0)|int }} yds vs {{ opp_school }}
-            ({{ opp_school }} allows {{ p.opponent_allowed_pg|round(0)|int }}/gm here vs {{ p.league_avg_allowed_pg|round(0)|int }} FBS avg)
-          {%- endif %}
+          {%- if p.projected_yards is not none -%}
+            ~{{ p.projected_yards|round|int }} yds{% if p.projected_td is not none %} &middot; {{ "%.1f"|format(p.projected_td) }} TD{% endif %}
+            <span class="proj-basis">({{ opp_school }} allows {{ p.opponent_allowed_pg|round|int }}/gm here vs {{ p.league_avg_allowed_pg|round|int }} FBS avg)</span>
+          {%- else -%}—{%- endif -%}
         </td>
       </tr>
     {% endfor %}
@@ -79,6 +87,43 @@
 
 {% macro sample_note(ctx) -%}
   {{ gm(ctx.games) }} this season
+{%- endmacro %}
+
+{% macro stat_cell(stats, tiers, key) -%}
+  <td class="tier-{{ tiers.get(key, 'mid') }}">{{ (stats.get(key) or 0)|round|int }}</td>
+{%- endmacro %}
+
+{% macro player_stat_table(rows, category) -%}
+  {% if rows %}
+  <table class="data-table player-table">
+    <thead>
+      <tr>
+        <th>Player</th>
+        {% if category == "Passing" %}<th>YDS</th><th>TD</th><th>INT</th>
+        {% elif category == "Rushing" %}<th>CAR</th><th>YDS</th><th>TD</th>
+        {% else %}<th>REC</th><th>YDS</th><th>TD</th>{% endif %}
+        <th>GP</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.name }}</td>
+        {% if category == "Passing" %}
+          {{ stat_cell(r.stats, r.tiers, "YDS") }}{{ stat_cell(r.stats, r.tiers, "TD") }}{{ stat_cell(r.stats, r.tiers, "INT") }}
+        {% elif category == "Rushing" %}
+          {{ stat_cell(r.stats, r.tiers, "CAR") }}{{ stat_cell(r.stats, r.tiers, "YDS") }}{{ stat_cell(r.stats, r.tiers, "TD") }}
+        {% else %}
+          {{ stat_cell(r.stats, r.tiers, "REC") }}{{ stat_cell(r.stats, r.tiers, "YDS") }}{{ stat_cell(r.stats, r.tiers, "TD") }}
+        {% endif %}
+        <td>{{ r.games }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No {{ category|lower }} stats yet.</p>
+  {% endif %}
 {%- endmacro %}
 
 <a href="/week/{{ game.season }}/{{ game.week }}" class="back-link">&larr; Back to schedule</a>
@@ -167,12 +212,12 @@
   <table class="data-table">
     <thead><tr><th>Stat (per game)</th><th>{{ game.away_school }} offense</th><th>{{ game.home_school }} defense allowed</th></tr></thead>
     <tbody>
-      <tr><td>Total yards</td><td>{{ fmt(away.offense.yards_pg) }}</td><td>{{ fmt(home.defense.yards_pg) }}</td></tr>
-      <tr><td>Rush yards</td><td>{{ fmt(away.offense.rush_pg) }}</td><td>{{ fmt(home.defense.rush_pg) }}</td></tr>
-      <tr><td>Pass yards</td><td>{{ fmt(away.offense.pass_pg) }}</td><td>{{ fmt(home.defense.pass_pg) }}</td></tr>
+      <tr><td>Total yards</td><td>{{ fmt(away.offense.yards_pg) }} {{ rank_chip(away.offense_ranks.yards_pg) }}</td><td>{{ fmt(home.defense.yards_pg) }} {{ rank_chip(home.defense_ranks.yards_pg) }}</td></tr>
+      <tr><td>Rush yards</td><td>{{ fmt(away.offense.rush_pg) }} {{ rank_chip(away.offense_ranks.rush_pg) }}</td><td>{{ fmt(home.defense.rush_pg) }} {{ rank_chip(home.defense_ranks.rush_pg) }}</td></tr>
+      <tr><td>Pass yards</td><td>{{ fmt(away.offense.pass_pg) }} {{ rank_chip(away.offense_ranks.pass_pg) }}</td><td>{{ fmt(home.defense.pass_pg) }} {{ rank_chip(home.defense_ranks.pass_pg) }}</td></tr>
       <tr><td>Plays</td><td>{{ fmt(away.offense.plays_pg) }}</td><td>{{ fmt(home.defense.plays_pg) }}</td></tr>
-      <tr><td>3rd down %</td><td>{{ pctval(away.offense.td_pct) }}</td><td>{{ pctval(home.defense.td_pct) }}</td></tr>
-      <tr><td>Turnovers</td><td>{{ fmt(away.offense.to_pg) }}</td><td>{{ fmt(home.defense.to_pg) }}</td></tr>
+      <tr><td>3rd down %</td><td>{{ pctval(away.offense.td_pct) }} {{ rank_chip(away.offense_ranks.td_pct) }}</td><td>{{ pctval(home.defense.td_pct) }} {{ rank_chip(home.defense_ranks.td_pct) }}</td></tr>
+      <tr><td>Turnovers</td><td>{{ fmt(away.offense.to_pg) }} {{ rank_chip(away.offense_ranks.to_pg) }}</td><td>{{ fmt(home.defense.to_pg) }} {{ rank_chip(home.defense_ranks.to_pg) }}</td></tr>
       <tr class="advanced-row"><td>SP+ rating (opponent-adjusted)</td><td>{{ sprating(away.sp_plus.off_rating if away.sp_plus else none, away.sp_plus.off_ranking if away.sp_plus else none) }}</td><td>{{ sprating(home.sp_plus.def_rating if home.sp_plus else none, home.sp_plus.def_ranking if home.sp_plus else none) }}</td></tr>
     </tbody>
   </table>
@@ -191,12 +236,12 @@
   <table class="data-table">
     <thead><tr><th>Stat (per game)</th><th>{{ game.home_school }} offense</th><th>{{ game.away_school }} defense allowed</th></tr></thead>
     <tbody>
-      <tr><td>Total yards</td><td>{{ fmt(home.offense.yards_pg) }}</td><td>{{ fmt(away.defense.yards_pg) }}</td></tr>
-      <tr><td>Rush yards</td><td>{{ fmt(home.offense.rush_pg) }}</td><td>{{ fmt(away.defense.rush_pg) }}</td></tr>
-      <tr><td>Pass yards</td><td>{{ fmt(home.offense.pass_pg) }}</td><td>{{ fmt(away.defense.pass_pg) }}</td></tr>
+      <tr><td>Total yards</td><td>{{ fmt(home.offense.yards_pg) }} {{ rank_chip(home.offense_ranks.yards_pg) }}</td><td>{{ fmt(away.defense.yards_pg) }} {{ rank_chip(away.defense_ranks.yards_pg) }}</td></tr>
+      <tr><td>Rush yards</td><td>{{ fmt(home.offense.rush_pg) }} {{ rank_chip(home.offense_ranks.rush_pg) }}</td><td>{{ fmt(away.defense.rush_pg) }} {{ rank_chip(away.defense_ranks.rush_pg) }}</td></tr>
+      <tr><td>Pass yards</td><td>{{ fmt(home.offense.pass_pg) }} {{ rank_chip(home.offense_ranks.pass_pg) }}</td><td>{{ fmt(away.defense.pass_pg) }} {{ rank_chip(away.defense_ranks.pass_pg) }}</td></tr>
       <tr><td>Plays</td><td>{{ fmt(home.offense.plays_pg) }}</td><td>{{ fmt(away.defense.plays_pg) }}</td></tr>
-      <tr><td>3rd down %</td><td>{{ pctval(home.offense.td_pct) }}</td><td>{{ pctval(away.defense.td_pct) }}</td></tr>
-      <tr><td>Turnovers</td><td>{{ fmt(home.offense.to_pg) }}</td><td>{{ fmt(away.defense.to_pg) }}</td></tr>
+      <tr><td>3rd down %</td><td>{{ pctval(home.offense.td_pct) }} {{ rank_chip(home.offense_ranks.td_pct) }}</td><td>{{ pctval(away.defense.td_pct) }} {{ rank_chip(away.defense_ranks.td_pct) }}</td></tr>
+      <tr><td>Turnovers</td><td>{{ fmt(home.offense.to_pg) }} {{ rank_chip(home.offense_ranks.to_pg) }}</td><td>{{ fmt(away.defense.to_pg) }} {{ rank_chip(away.defense_ranks.to_pg) }}</td></tr>
       <tr class="advanced-row"><td>SP+ rating (opponent-adjusted)</td><td>{{ sprating(home.sp_plus.off_rating if home.sp_plus else none, home.sp_plus.off_ranking if home.sp_plus else none) }}</td><td>{{ sprating(away.sp_plus.def_rating if away.sp_plus else none, away.sp_plus.def_ranking if away.sp_plus else none) }}</td></tr>
     </tbody>
   </table>
@@ -224,26 +269,7 @@
     {{ depth_chart_section(away.depth_chart) }}
     {% for label, rows in [("Passing", away.passing), ("Rushing", away.rushing), ("Receiving", away.receiving)] %}
       <h3>{{ label }}</h3>
-      {% if rows %}
-      <table class="data-table player-table">
-        <tbody>
-        {% for name, stats in rows %}
-          <tr>
-            <td>{{ name }}</td>
-            {% if label == "Passing" %}
-              <td>{{ stats.get("YDS", "—") }} yds</td><td>{{ stats.get("TD", "—") }} TD</td><td>{{ stats.get("INT", "—") }} INT</td>
-            {% elif label == "Rushing" %}
-              <td>{{ stats.get("CAR", "—") }} car</td><td>{{ stats.get("YDS", "—") }} yds</td><td>{{ stats.get("TD", "—") }} TD</td>
-            {% else %}
-              <td>{{ stats.get("REC", "—") }} rec</td><td>{{ stats.get("YDS", "—") }} yds</td><td>{{ stats.get("TD", "—") }} TD</td>
-            {% endif %}
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <p class="muted">No {{ label|lower }} stats yet.</p>
-      {% endif %}
+      {{ player_stat_table(rows, label) }}
     {% endfor %}
   </section>
 
@@ -254,26 +280,7 @@
     {{ depth_chart_section(home.depth_chart) }}
     {% for label, rows in [("Passing", home.passing), ("Rushing", home.rushing), ("Receiving", home.receiving)] %}
       <h3>{{ label }}</h3>
-      {% if rows %}
-      <table class="data-table player-table">
-        <tbody>
-        {% for name, stats in rows %}
-          <tr>
-            <td>{{ name }}</td>
-            {% if label == "Passing" %}
-              <td>{{ stats.get("YDS", "—") }} yds</td><td>{{ stats.get("TD", "—") }} TD</td><td>{{ stats.get("INT", "—") }} INT</td>
-            {% elif label == "Rushing" %}
-              <td>{{ stats.get("CAR", "—") }} car</td><td>{{ stats.get("YDS", "—") }} yds</td><td>{{ stats.get("TD", "—") }} TD</td>
-            {% else %}
-              <td>{{ stats.get("REC", "—") }} rec</td><td>{{ stats.get("YDS", "—") }} yds</td><td>{{ stats.get("TD", "—") }} TD</td>
-            {% endif %}
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <p class="muted">No {{ label|lower }} stats yet.</p>
-      {% endif %}
+      {{ player_stat_table(rows, label) }}
     {% endfor %}
   </section>
 </div>

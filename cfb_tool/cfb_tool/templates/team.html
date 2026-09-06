@@ -36,7 +36,7 @@
           <td>{{ p.player_name }}</td>
           <td>{{ p.category }}</td>
           <td>{{ p.stat_type }}</td>
-          <td>{{ p.stat_value | round(0) }}</td>
+          <td>{{ p.stat_value | round | int }}</td>
         </tr>
       {% endfor %}
       </tbody>

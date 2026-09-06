@@ -15,6 +15,7 @@ import weather as weather_engine
 import lines as lines_engine
 import depth_chart
 import projections
+import rankings
 
 app = Flask(__name__)
 
@@ -204,18 +205,55 @@ def overview(season, week):
     return _render_overview(season, week)
 
 
+_CATEGORY_STAT_COLS = {
+    "passing": ["YDS", "TD", "INT"],
+    "rushing": ["CAR", "YDS", "TD"],
+    "receiving": ["REC", "YDS", "TD"],
+}
+_LOWER_IS_BETTER = {"INT"}  # rest of the tiered columns are "more is better"
+
+
+def _tier_by_rank(rank, count):
+    if count <= 1:
+        return "mid"
+    frac = rank / (count - 1)  # 0 = best shown, 1 = worst shown
+    if frac <= 1 / 3:
+        return "good"
+    if frac >= 2 / 3:
+        return "bad"
+    return "mid"
+
+
 def _top_players(conn, team_id, season, category, limit=5):
+    """Top producers in a category, each with the shown stat columns,
+    games played (from the per-game log), and a per-column tier
+    ('good'/'mid'/'bad') ranking that player against the others shown
+    here — highest producer green, lowest red, matching how a betting
+    audience actually reads a box score."""
     rows = conn.execute(
-        """SELECT player_name, stat_type, stat_value FROM player_season_stats
+        """SELECT player_id, player_name, stat_type, stat_value FROM player_season_stats
            WHERE team_id = ? AND season = ? AND category = ?""",
         (team_id, season, category),
     ).fetchall()
     by_player = {}
     for r in rows:
-        by_player.setdefault(r["player_name"], {})[r["stat_type"]] = r["stat_value"]
-    sort_key = "YDS"
-    players = sorted(by_player.items(), key=lambda kv: kv[1].get(sort_key) or 0, reverse=True)
-    return players[:limit]
+        by_player.setdefault((r["player_id"], r["player_name"]), {})[r["stat_type"]] = r["stat_value"]
+    ranked = sorted(by_player.items(), key=lambda kv: kv[1].get("YDS") or 0, reverse=True)[:limit]
+
+    players = []
+    for (player_id, name), stats in ranked:
+        games = conn.execute(
+            "SELECT COUNT(*) FROM player_game_stats WHERE player_id = ? AND season = ? AND category = ?",
+            (player_id, season, category),
+        ).fetchone()[0]
+        players.append({"name": name, "stats": stats, "games": games, "tiers": {}})
+
+    for col in _CATEGORY_STAT_COLS[category]:
+        order = sorted(range(len(players)), key=lambda i: players[i]["stats"].get(col) or 0,
+                        reverse=col not in _LOWER_IS_BETTER)
+        for rank, i in enumerate(order):
+            players[i]["tiers"][col] = _tier_by_rank(rank, len(order))
+    return players
 
 
 # Team offense/defense/SP+/SOS is several queries per team. The schedule
@@ -246,6 +284,9 @@ def team_stat_snapshot(conn, team_id, season):
     return snapshot
 
 
+_RANK_FIELDS = ["yards_pg", "rush_pg", "pass_pg", "to_pg", "td_pct"]
+
+
 def team_matchup_context(conn, team_id, season, opponent_team_id):
     ctx = team_stat_snapshot(conn, team_id, season)
     ctx["passing"] = _top_players(conn, team_id, season, "passing")
@@ -253,6 +294,8 @@ def team_matchup_context(conn, team_id, season, opponent_team_id):
     ctx["receiving"] = _top_players(conn, team_id, season, "receiving")
     ctx["depth_chart"] = depth_chart.team_depth_chart(conn, team_id, season)
     ctx["projections"] = projections.team_player_projections(conn, team_id, season, opponent_team_id)
+    ctx["offense_ranks"] = {f: rankings.rank_badge(conn, season, "offense", f, ctx["offense"], ctx["sp_plus"]) for f in _RANK_FIELDS}
+    ctx["defense_ranks"] = {f: rankings.rank_badge(conn, season, "defense", f, ctx["defense"], ctx["sp_plus"]) for f in _RANK_FIELDS}
     return ctx
 
 

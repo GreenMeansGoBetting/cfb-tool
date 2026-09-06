@@ -6,6 +6,10 @@
   --muted: #8b93a5;
   --accent: #5b8def;
   --accent-2: #d94f4f;
+  --good: #3ec972;
+  --mid: #d9a53f;
+  --bad: #d94f4f;
+  --muted-badge: #4a5064;
 }
 
 * { box-sizing: border-box; }
@@ -314,6 +318,28 @@ select {
   text-transform: uppercase;
   letter-spacing: 0.02em;
 }
+.proj-basis { display: block; color: var(--muted); font-size: 0.78rem; margin-top: 2px; }
+
+/* National rank chips (offense/defense tables) and player-table tiers --
+   both share the same good/mid/bad/muted vocabulary. "muted" means the
+   raw stat's rank disagrees sharply with the team's opponent-adjusted
+   SP+ rank, so the color can't be trusted (see rankings.py). */
+.rank-chip {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-left: 4px;
+}
+.rank-chip.tier-good { background: rgba(62, 201, 114, 0.16); color: var(--good); }
+.rank-chip.tier-mid { background: rgba(217, 165, 63, 0.16); color: var(--mid); }
+.rank-chip.tier-bad { background: rgba(217, 79, 79, 0.16); color: var(--bad); }
+.rank-chip.tier-muted { background: rgba(74, 80, 100, 0.3); color: var(--muted); }
+
+.player-table td.tier-good { background: rgba(62, 201, 114, 0.12); }
+.player-table td.tier-mid { background: rgba(217, 165, 63, 0.08); }
+.player-table td.tier-bad { background: rgba(217, 79, 79, 0.1); }
 
 .flag-conflict {
   background: rgba(217, 79, 79, 0.12);

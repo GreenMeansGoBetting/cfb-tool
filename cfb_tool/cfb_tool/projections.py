@@ -103,10 +103,12 @@ def team_player_projections(conn, team_id, season, opponent_team_id):
                 "league_avg_allowed_pg": league_avg,
                 "adjustment": None,
                 "projected_yards": None,
+                "projected_td": None,
             }
             if opp_allowed is not None and league_avg:
                 adjustment = max(MIN_ADJUSTMENT, min(MAX_ADJUSTMENT, opp_allowed / league_avg))
                 entry["adjustment"] = adjustment
                 entry["projected_yards"] = log["avg_yards"] * adjustment
+                entry["projected_td"] = log["avg_td"] * adjustment
             results.append(entry)
     return results
