@@ -208,14 +208,35 @@ def _split_week_zero(conn, year):
           f"(gap detected before {parsed[split_index][1].date()})")
 
 
+def _started_weeks(conn, year):
+    """Regular-season weeks that have actually kicked off -- pulling a
+    per-week endpoint for a week that hasn't started yet always comes
+    back empty, so looping over the full season's weeks (up to 15) every
+    single ingest run was wasting most of its CFBD API calls on weeks
+    with nothing to fetch. This is the one query both per-week syncs
+    below share.
+
+    Compares parsed datetimes rather than raw ISO strings -- CFBD's
+    start_date sometimes ends in 'Z' and sometimes doesn't, and string
+    comparison across that mismatch isn't reliably correct right at a
+    week boundary (see _split_week_zero for the same reasoning)."""
+    now = datetime.now(timezone.utc)
+    rows = conn.execute(
+        "SELECT week, start_date FROM games WHERE season = ? AND season_type = 'regular'",
+        (year,),
+    ).fetchall()
+    weeks = set()
+    for r in rows:
+        if r["start_date"] and datetime.fromisoformat(r["start_date"].replace("Z", "+00:00")) <= now:
+            weeks.add(r["week"])
+    return sorted(weeks)
+
+
 def sync_team_game_stats(client, conn, year):
     print(f"Syncing team game stats for {year}...")
     # CFBD requires week, team, or conference on this endpoint — a bare
     # ?year= is rejected, so pull it one regular-season week at a time.
-    weeks = [r[0] for r in conn.execute(
-        "SELECT DISTINCT week FROM games WHERE season = ? AND season_type = 'regular' ORDER BY week",
-        (year,),
-    ).fetchall()]
+    weeks = _started_weeks(conn, year)
     known_team_ids = {r[0] for r in conn.execute("SELECT team_id FROM teams").fetchall()}
     known_game_ids = {r[0] for r in conn.execute(
         "SELECT game_id FROM games WHERE season = ?", (year,)
@@ -474,10 +495,7 @@ def sync_player_game_stats(client, conn, year):
     player not on our synced roster for this season is skipped rather than
     guessed at (walk-ons/late roster moves CFBD's roster endpoint missed)."""
     print(f"Syncing player game stats for {year}...")
-    weeks = [r[0] for r in conn.execute(
-        "SELECT DISTINCT week FROM games WHERE season = ? AND season_type = 'regular' ORDER BY week",
-        (year,),
-    ).fetchall()]
+    weeks = _started_weeks(conn, year)
     known_game_ids = {r[0] for r in conn.execute(
         "SELECT game_id FROM games WHERE season = ?", (year,)
     ).fetchall()}

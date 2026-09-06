@@ -40,6 +40,20 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # Prior-season data (2025) never changes, but re-pulling it from
+      # scratch every run was costing as much CFBD API quota as the
+      # current-season pull -- for data that's already final. Cache the
+      # db file (it holds both seasons) so the prior-season ingest below
+      # only actually runs once; every later run restores it and just
+      # layers the fresh current-season data on top. Bump the key's `v1`
+      # if 2025 data ever needs to be force-refreshed.
+      - name: Restore cached database
+        id: cache-db
+        uses: actions/cache@v4
+        with:
+          path: cfb_tool/cfb_tool/db/cfb.db
+          key: cfbd-db-2025-v1
+
       - name: Ingest current season
         env:
           CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
@@ -47,12 +61,12 @@ jobs:
         # CFBD (typically becomes available in the summer before kickoff).
         run: python ingest.py --year 2026
 
-      - name: Ingest prior season
+      - name: Ingest prior season (first run only -- cached afterward)
+        if: steps.cache-db.outputs.cache-hit != 'true'
         env:
           CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
-        # Needed for the "who's actually back" / depth-chart lookups
-        # (returning.py, depth_chart.py both read season-1 stats) — bump
-        # alongside the line above.
+        # Needed so a coordinator who changed schools this year can carry
+        # their coaching history into the new-OC/DC tendency blend.
         run: python ingest.py --year 2025
 
       - name: Build static site
