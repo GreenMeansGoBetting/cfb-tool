@@ -165,8 +165,7 @@ CREATE TABLE IF NOT EXISTS coordinator_tendencies (
 -- This endpoint returns a clean flat shape (unlike /games/players, which
 -- nests categories/types/athletes) so it's the reliable source for
 -- leaderboards and season pages. Per-game granularity (player_game_stats
--- above) is wired up but its source endpoint needs response-shape
--- verification against a live API key — see README "Known gaps".
+-- above) comes from /games/players and feeds projections.py.
 CREATE TABLE IF NOT EXISTS player_season_stats (
     player_id       INTEGER NOT NULL,
     player_name     TEXT NOT NULL,
@@ -193,18 +192,6 @@ CREATE TABLE IF NOT EXISTS sp_plus_ratings (
     def_rating          REAL,
     def_ranking         INTEGER,
     special_teams_rating REAL,
-    PRIMARY KEY (team_id, season)
-);
-
--- Team-level returning production, sourced from CFBD's /player/returning
--- endpoint. Drives the REBUILD badge (see team_stats.py) — a plain roster
--- fact about how much of last year's production is still around, shown
--- alongside this year's stats rather than blended into them.
-CREATE TABLE IF NOT EXISTS returning_production (
-    team_id     INTEGER NOT NULL REFERENCES teams(team_id),
-    season      INTEGER NOT NULL,
-    pct_ppa     REAL,        -- fraction (0-1ish) of last year's total PPA still on the roster
-    usage_pct   REAL,        -- fraction of last year's snap/usage still on the roster
     PRIMARY KEY (team_id, season)
 );
 

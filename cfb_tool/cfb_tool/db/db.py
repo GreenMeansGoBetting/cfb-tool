@@ -57,6 +57,11 @@ def _drop_stale_tables(conn):
         if players_fk_cols == ["player_id"]:  # old single-column FK — stale
             conn.execute("DROP TABLE player_game_stats")
 
+    # Returning-production feature (REBUILD badge / "who's actually back")
+    # dropped entirely per direction to go current-season-only — drop the
+    # table on any db that already has it rather than leaving dead data.
+    conn.execute("DROP TABLE IF EXISTS returning_production")
+
     conn.commit()
 
 

@@ -54,21 +54,27 @@
   {% endfor %}
 {%- endmacro %}
 
-{% macro key_returners_line(list) -%}
-  {%- if not list -%}
-    no roster data yet to check who's back
-  {%- else -%}
-    {%- for r in list -%}
-      {{ r.name }} ({{ r.category }}, {{ r.stat_value | round(0) | int if r.stat_value is not none else "—" }} {{ r.stat_label|lower }}{% if r.td is not none %}, {{ r.td|round(0)|int }} TD{% endif %} last season){% if r.returning is none %} — unknown{% elif r.returning %} — <span class="returner-back">back</span>{% else %} — <span class="returner-gone">departed</span>{% endif %}{% if not loop.last %} &middot; {% endif %}
-    {%- endfor -%}
-  {%- endif -%}
-{%- endmacro %}
-
-{% set REBUILD_THRESHOLD = 0.5 %}
-{% macro rebuild_badge(ctx) -%}
-  {%- if ctx.returning_pct is not none and ctx.returning_pct < REBUILD_THRESHOLD -%}
-    <span class="rebuild-badge" title="Returning production is below 50% — treat last season's numbers with extra caution">REBUILD &middot; {{ "%.0f"|format(ctx.returning_pct * 100) }}% returning</span>
-  {%- endif -%}
+{% macro projections_section(list, opp_school) -%}
+  {% if list %}
+  <h3>This Week — Rough Projections</h3>
+  <p class="muted depth-chart-disclaimer">Each player's own current-season pace, adjusted by how {{ opp_school }}'s defense has allowed that stat category vs. the FBS average — a rough ratio, not a calibrated model. Raw numbers behind the adjustment shown alongside it.</p>
+  <table class="data-table player-table projections-table">
+    <tbody>
+    {% for p in list %}
+      <tr>
+        <td>{{ p.name }} <span class="proj-category">({{ p.category }})</span></td>
+        <td>
+          {{ p.avg_yards|round(0)|int }} yds/gm{% if p.avg_td is not none %} &middot; {{ "%.1f"|format(p.avg_td) }} TD/gm{% endif %} ({{ gm(p.games) }})
+          {%- if p.projected_yards is not none %}
+            &rarr; ~{{ p.projected_yards|round(0)|int }} yds vs {{ opp_school }}
+            ({{ opp_school }} allows {{ p.opponent_allowed_pg|round(0)|int }}/gm here vs {{ p.league_avg_allowed_pg|round(0)|int }} FBS avg)
+          {%- endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
 {%- endmacro %}
 
 {% macro sample_note(ctx) -%}
@@ -87,17 +93,6 @@
   {% if game.venue %} &middot; {{ game.venue }}{% endif %}
   {% if game.home_points is not none %} &middot; Final: {{ game.away_school }} {{ game.away_points }} – {{ game.home_school }} {{ game.home_points }}{% endif %}
 </p>
-
-{% set away_rebuild = away.offense.returning_pct is not none and away.offense.returning_pct < REBUILD_THRESHOLD %}
-{% set home_rebuild = home.offense.returning_pct is not none and home.offense.returning_pct < REBUILD_THRESHOLD %}
-{% if away_rebuild or home_rebuild %}
-<div class="uncertainty-banner">
-  <strong>High uncertainty.</strong>
-  {% if away_rebuild %}{{ game.away_school }} returns {{ "%.0f"|format(away.offense.returning_pct*100) }}% of last season's production.{% endif %}
-  {% if home_rebuild %}{{ game.home_school }} returns {{ "%.0f"|format(home.offense.returning_pct*100) }}% of last season's production.{% endif %}
-  Heavy roster turnover — treat any early-season stats or flags for that team with extra caution.
-</div>
-{% endif %}
 
 {% if model_spread %}
 <p class="muted model-spread-note">
@@ -162,15 +157,12 @@
 <section class="matchup-frame">
   <h2>{{ game.away_school }} Offense vs. {{ game.home_school }} Defense</h2>
   <p class="muted sample-note">
-    {{ game.away_school }} offense: {{ sample_note(away.offense) }} {{ rebuild_badge(away.offense) }} &middot;
+    {{ game.away_school }} offense: {{ sample_note(away.offense) }} &middot;
     {{ game.home_school }} defense: {{ sample_note(home.defense) }}
   </p>
   <p class="muted sample-note sos-note">
     {{ game.away_school }}: {{ sos_line(away.sos, 'offense') }} &middot;
     {{ game.home_school }}: {{ sos_line(home.sos, 'defense') }}
-  </p>
-  <p class="muted sample-note returners-note">
-    {{ game.away_school }} — who's actually back: {{ key_returners_line(away.key_returners) }}
   </p>
   <table class="data-table">
     <thead><tr><th>Stat (per game)</th><th>{{ game.away_school }} offense</th><th>{{ game.home_school }} defense allowed</th></tr></thead>
@@ -189,15 +181,12 @@
 <section class="matchup-frame">
   <h2>{{ game.home_school }} Offense vs. {{ game.away_school }} Defense</h2>
   <p class="muted sample-note">
-    {{ game.home_school }} offense: {{ sample_note(home.offense) }} {{ rebuild_badge(home.offense) }} &middot;
+    {{ game.home_school }} offense: {{ sample_note(home.offense) }} &middot;
     {{ game.away_school }} defense: {{ sample_note(away.defense) }}
   </p>
   <p class="muted sample-note sos-note">
     {{ game.home_school }}: {{ sos_line(home.sos, 'offense') }} &middot;
     {{ game.away_school }}: {{ sos_line(away.sos, 'defense') }}
-  </p>
-  <p class="muted sample-note returners-note">
-    {{ game.home_school }} — who's actually back: {{ key_returners_line(home.key_returners) }}
   </p>
   <table class="data-table">
     <thead><tr><th>Stat (per game)</th><th>{{ game.home_school }} offense</th><th>{{ game.away_school }} defense allowed</th></tr></thead>
@@ -230,6 +219,7 @@
 <div class="two-col">
   <section class="players-col">
     <h2>{{ game.away_school }} Players</h2>
+    {{ projections_section(away.projections, game.home_school) }}
     <p class="muted depth-chart-disclaimer">Likely contributors — ranked by 2025 usage among players still on the roster, not an official depth chart (none exists publicly).</p>
     {{ depth_chart_section(away.depth_chart) }}
     {% for label, rows in [("Passing", away.passing), ("Rushing", away.rushing), ("Receiving", away.receiving)] %}
@@ -259,6 +249,7 @@
 
   <section class="players-col">
     <h2>{{ game.home_school }} Players</h2>
+    {{ projections_section(home.projections, game.away_school) }}
     <p class="muted depth-chart-disclaimer">Likely contributors — ranked by 2025 usage among players still on the roster, not an official depth chart (none exists publicly).</p>
     {{ depth_chart_section(home.depth_chart) }}
     {% for label, rows in [("Passing", home.passing), ("Rushing", home.rushing), ("Receiving", home.receiving)] %}

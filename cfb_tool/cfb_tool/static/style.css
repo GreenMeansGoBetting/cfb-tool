@@ -254,28 +254,6 @@ select {
 .back-link { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
 .model-spread-note { font-size: 0.9rem; margin: 8px 0 0; }
 .odds-note { font-size: 0.9rem; margin: 4px 0 0; }
-.uncertainty-banner {
-  background: var(--panel);
-  border: 1px solid #b8862b;
-  border-radius: 8px;
-  padding: 10px 14px;
-  margin: 12px 0 4px;
-  font-size: 0.9rem;
-  line-height: 1.5;
-}
-.uncertainty-banner strong { color: #d9a53f; }
-.rebuild-badge {
-  display: inline-block;
-  border: 1px solid #b8862b;
-  color: #d9a53f;
-  border-radius: 4px;
-  padding: 1px 7px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  margin-left: 4px;
-}
 .back-link:hover { text-decoration: underline; }
 .matchup-frame { margin-top: 28px; }
 .sample-note { font-size: 0.85rem; margin-top: -4px; }
@@ -329,9 +307,13 @@ select {
 }
 .advanced-row td { color: var(--muted); font-style: italic; border-top: 1px dashed var(--border); }
 .sos-note { margin-top: -8px; margin-bottom: 12px; }
-.returners-note { margin-top: -8px; margin-bottom: 12px; }
-.returner-back { color: var(--text); font-weight: 600; }
-.returner-gone { color: var(--accent-2); font-weight: 600; }
+.proj-category {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
 
 .flag-conflict {
   background: rgba(217, 79, 79, 0.12);

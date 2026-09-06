@@ -12,9 +12,9 @@ import flags as flag_engine
 import team_stats
 import sos
 import weather as weather_engine
-import returning
 import lines as lines_engine
 import depth_chart
+import projections
 
 app = Flask(__name__)
 
@@ -246,13 +246,13 @@ def team_stat_snapshot(conn, team_id, season):
     return snapshot
 
 
-def team_matchup_context(conn, team_id, season):
+def team_matchup_context(conn, team_id, season, opponent_team_id):
     ctx = team_stat_snapshot(conn, team_id, season)
     ctx["passing"] = _top_players(conn, team_id, season, "passing")
     ctx["rushing"] = _top_players(conn, team_id, season, "rushing")
     ctx["receiving"] = _top_players(conn, team_id, season, "receiving")
-    ctx["key_returners"] = returning.key_returners(conn, team_id, season)
     ctx["depth_chart"] = depth_chart.team_depth_chart(conn, team_id, season)
+    ctx["projections"] = projections.team_player_projections(conn, team_id, season, opponent_team_id)
     return ctx
 
 
@@ -271,8 +271,8 @@ def game_detail(game_id):
     if not game:
         abort(404)
 
-    home = team_matchup_context(conn, game["home_team_id"], game["season"])
-    away = team_matchup_context(conn, game["away_team_id"], game["season"])
+    home = team_matchup_context(conn, game["home_team_id"], game["season"], game["away_team_id"])
+    away = team_matchup_context(conn, game["away_team_id"], game["season"], game["home_team_id"])
 
     venue = None
     if game["venue_id"]:

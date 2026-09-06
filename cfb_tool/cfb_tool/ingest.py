@@ -437,26 +437,110 @@ def sync_sp_plus(client, conn, year):
     print(f"  {len(rows)} SP+ rating rows synced.")
 
 
-def sync_returning_production(client, conn, year):
-    print(f"Syncing returning production for {year}...")
-    rows_raw = client.get_returning_production(year=year)
+_PLAYER_GAME_STAT_TYPES = {
+    "passing": ("C/ATT", "YDS", "TD", "INT"),
+    "rushing": ("CAR", "YDS", "TD"),
+    "receiving": ("REC", "YDS", "TD"),
+}
+
+
+def _player_game_row(player_id, game_id, team_id, year, week, category, stats):
+    if category == "passing":
+        comp, att = None, None
+        ca = stats.get("C/ATT")
+        if ca and "/" in str(ca):
+            c, a = str(ca).split("/", 1)
+            comp, att = _to_int(c), _to_int(a)
+        return (player_id, game_id, team_id, year, week, category,
+                comp, att, _to_int(stats.get("YDS")), _to_int(stats.get("TD")), _to_int(stats.get("INT")),
+                None, None, None, None, None, None)
+    if category == "rushing":
+        return (player_id, game_id, team_id, year, week, category,
+                None, None, None, None, None,
+                _to_int(stats.get("CAR")), _to_int(stats.get("YDS")), _to_int(stats.get("TD")),
+                None, None, None)
+    if category == "receiving":
+        return (player_id, game_id, team_id, year, week, category,
+                None, None, None, None, None,
+                None, None, None,
+                _to_int(stats.get("REC")), _to_int(stats.get("YDS")), _to_int(stats.get("TD")))
+    return None
+
+
+def sync_player_game_stats(client, conn, year):
+    """Per-game player box scores from /games/players -- the raw input for
+    the player-projection system. Must run after sync_roster: a row's FK
+    requires (player_id, season) to already exist in players, so any
+    player not on our synced roster for this season is skipped rather than
+    guessed at (walk-ons/late roster moves CFBD's roster endpoint missed)."""
+    print(f"Syncing player game stats for {year}...")
+    weeks = [r[0] for r in conn.execute(
+        "SELECT DISTINCT week FROM games WHERE season = ? AND season_type = 'regular' ORDER BY week",
+        (year,),
+    ).fetchall()]
+    known_game_ids = {r[0] for r in conn.execute(
+        "SELECT game_id FROM games WHERE season = ?", (year,)
+    ).fetchall()}
+    known_player_ids = {r[0] for r in conn.execute(
+        "SELECT player_id FROM players WHERE season = ?", (year,)
+    ).fetchall()}
+    team_id_by_school = {r["school"]: r["team_id"] for r in conn.execute("SELECT school, team_id FROM teams").fetchall()}
+
     rows = []
-    for r in rows_raw:
-        team_row = conn.execute(
-            "SELECT team_id FROM teams WHERE school = ?", (r.get("team"),)
-        ).fetchone()
-        if not team_row:
+    skipped_players = 0
+    for week in weeks:
+        try:
+            games = client.get_player_game_stats(year=year, week=week)
+        except Exception as e:
+            print(f"  week {week}: FAILED ({e}) — skipping, rerun ingest later to fill it in")
             continue
-        rows.append((team_row[0], year, _to_float(r.get("percentPPA")), _to_float(r.get("usage"))))
-    conn.executemany(
-        """INSERT INTO returning_production (team_id, season, pct_ppa, usage_pct)
-           VALUES (?, ?, ?, ?)
-           ON CONFLICT(team_id, season) DO UPDATE SET
-             pct_ppa=excluded.pct_ppa, usage_pct=excluded.usage_pct""",
-        rows,
-    )
-    conn.commit()
-    print(f"  {len(rows)} returning-production rows synced.")
+        for g in games:
+            game_id = g.get("id")
+            if game_id not in known_game_ids:
+                continue
+            for team_entry in g.get("teams", []):
+                team_id = team_id_by_school.get(team_entry.get("team"))
+                for cat in team_entry.get("categories", []):
+                    category = cat.get("name")
+                    if category not in _PLAYER_GAME_STAT_TYPES:
+                        continue
+                    per_player = {}
+                    for ty in cat.get("types", []):
+                        type_name = ty.get("name")
+                        for ath in ty.get("athletes", []):
+                            try:
+                                pid = int(ath.get("id"))
+                            except (TypeError, ValueError):
+                                continue
+                            per_player.setdefault(pid, {})[type_name] = ath.get("stat")
+                    for pid, stats in per_player.items():
+                        if pid not in known_player_ids:
+                            skipped_players += 1
+                            continue
+                        row = _player_game_row(pid, game_id, team_id, year, week, category, stats)
+                        if row:
+                            rows.append(row)
+        print(f"  week {week}: {len(games)} games")
+
+    if rows:
+        conn.executemany(
+            """INSERT INTO player_game_stats
+                 (player_id, game_id, team_id, season, week, category,
+                  pass_completions, pass_attempts, pass_yards, pass_td, pass_int,
+                  rush_attempts, rush_yards, rush_td,
+                  receptions, rec_yards, rec_td)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(player_id, game_id, category) DO UPDATE SET
+                 pass_completions=excluded.pass_completions, pass_attempts=excluded.pass_attempts,
+                 pass_yards=excluded.pass_yards, pass_td=excluded.pass_td, pass_int=excluded.pass_int,
+                 rush_attempts=excluded.rush_attempts, rush_yards=excluded.rush_yards, rush_td=excluded.rush_td,
+                 receptions=excluded.receptions, rec_yards=excluded.rec_yards, rec_td=excluded.rec_td""",
+            rows,
+        )
+        conn.commit()
+    print(f"  {len(rows)} player-game stat rows synced"
+          + (f" ({skipped_players} player-game rows skipped, not in this season's roster sync)" if skipped_players else "")
+          + ".")
 
 
 def main():
@@ -478,9 +562,9 @@ def main():
             sync_games(client, conn, args.year)
             sync_team_game_stats(client, conn, args.year)
             sync_player_season_stats(client, conn, args.year)
-            sync_returning_production(client, conn, args.year)
             sync_sp_plus(client, conn, args.year)
             sync_roster(client, conn, args.year)
+            sync_player_game_stats(client, conn, args.year)
             sync_lines(client, conn, args.year)
             _split_week_zero(conn, args.year)
         conn.execute(

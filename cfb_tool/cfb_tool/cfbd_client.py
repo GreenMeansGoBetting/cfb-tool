@@ -99,7 +99,8 @@ class CFBDClient:
 
     def get_player_game_stats(self, year, week=None, team=None,
                                season_type="regular", category=None):
-        """Raw per-game box score stats (nested shape - Phase 2)."""
+        """Raw per-game box score stats, nested by team -> category -> stat
+        type -> athlete. The player-projection system's raw input."""
         params = {"year": year, "seasonType": season_type}
         if week:
             params["week"] = week
@@ -128,11 +129,3 @@ class CFBDClient:
         if team:
             params["team"] = team
         return self._get("/ratings/sp", params)
-
-    def get_returning_production(self, year, team=None):
-        """Team-level % of last year's production (PPA/usage) still on the
-        roster — the cold-start 'how much to trust last season's stats' input."""
-        params = {"year": year}
-        if team:
-            params["team"] = team
-        return self._get("/player/returning", params)
