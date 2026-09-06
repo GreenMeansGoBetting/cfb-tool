@@ -54,9 +54,28 @@ def fbs_avg_yards_allowed(conn, season):
     return value
 
 
+# Severity-circle tier cutoffs, calibrated against the actual score
+# distribution of every Week 0/1 flag generated live (not a guess): scores
+# cluster hard at 0.5 (the "SP+ corroborates but the raw gap is modest"
+# baseline case) with a long tail up to the 1.0 cap, and a handful of very
+# weak flags (new-coordinator flags near a 50% run rate) down near 0.1.
+# Roughly 15% of real flags land below 0.5 (red), ~55% land in the 0.5-0.85
+# middle (yellow), and ~30% clear 0.85 (green) -- so "yellow" is the
+# typical flag, not the middle of an arbitrary 0-1 split.
+SEVERITY_RED_MAX = 0.5
+SEVERITY_GREEN_MIN = 0.85
+
+
+def _severity_circle(score):
+    if score < SEVERITY_RED_MAX:
+        return "🔴"
+    if score >= SEVERITY_GREEN_MIN:
+        return "🟢"
+    return "🟡"
+
+
 class Flag:
-    def __init__(self, icon, label, text, side, bet_type, strength, threshold, moniker, lean=None):
-        self.icon = icon
+    def __init__(self, label, text, side, bet_type, strength, threshold, moniker, lean=None):
         self.label = label            # short type name, e.g. "Tempo"
         self.text = text              # the full plain-language sentence (matchup card)
         self.moniker = moniker        # short team-specific phrase (schedule row)
@@ -65,6 +84,11 @@ class Flag:
         self.strength = strength      # raw magnitude past the threshold
         self.score = min(1.0, strength / (threshold * 2)) if threshold else 0.5
         self.lean = lean              # 'over' | 'under' | None — for conflict detection
+        # Circle color is the flag's disparity size (score), not its type --
+        # green = a big edge worth digging into, red = barely cleared the
+        # noise floor. Deliberately NOT a directional pick/verdict: it says
+        # "how much tension is here", not "bet this side".
+        self.icon = _severity_circle(self.score)
 
 
 def _gm(games):
@@ -97,10 +121,10 @@ def _tempo_flags(away, home):
         f"— a pace mismatch that tends to push total plays run, and scoring chances, up."
     )
     moniker = f"{fast_name} tempo mismatch"
-    return [Flag("⚡", "Tempo mismatch", text, "both", "total", abs(diff), TEMPO_DIFF_THRESHOLD, moniker, lean="over")]
+    return [Flag("Tempo mismatch", text, "both", "total", abs(diff), TEMPO_DIFF_THRESHOLD, moniker, lean="over")]
 
 
-def _matchup_advantage_flags(off_side, off_ctx, def_side, def_ctx, stat_key, pg_field, label, icon, threshold):
+def _matchup_advantage_flags(off_side, off_ctx, def_side, def_ctx, stat_key, pg_field, label, threshold):
     off_pg = off_ctx["offense"][pg_field]
     def_pg = def_ctx["defense"][pg_field]
     if off_pg is None or def_pg is None:
@@ -163,15 +187,15 @@ def _matchup_advantage_flags(off_side, off_ctx, def_side, def_ctx, stat_key, pg_
     # treat it as a baseline (not-yet-more-confident-than-that) flag
     # rather than scoring it near zero off a tiny raw gap.
     strength = gap if raw_clears else threshold
-    return [Flag(icon, f"{label.title()} matchup", text, off_side, "side", strength, threshold, moniker)]
+    return [Flag(f"{label.title()} matchup", text, off_side, "side", strength, threshold, moniker)]
 
 
 def _rush_pass_flags(away, home):
     flags = []
-    flags += _matchup_advantage_flags("away", away, "home", home, "rush", "rush_pg", "rush", "🏃", RUSH_MATCHUP_THRESHOLD)
-    flags += _matchup_advantage_flags("home", home, "away", away, "rush", "rush_pg", "rush", "🏃", RUSH_MATCHUP_THRESHOLD)
-    flags += _matchup_advantage_flags("away", away, "home", home, "pass", "pass_pg", "pass", "🎯", PASS_MATCHUP_THRESHOLD)
-    flags += _matchup_advantage_flags("home", home, "away", away, "pass", "pass_pg", "pass", "🎯", PASS_MATCHUP_THRESHOLD)
+    flags += _matchup_advantage_flags("away", away, "home", home, "rush", "rush_pg", "rush", RUSH_MATCHUP_THRESHOLD)
+    flags += _matchup_advantage_flags("home", home, "away", away, "rush", "rush_pg", "rush", RUSH_MATCHUP_THRESHOLD)
+    flags += _matchup_advantage_flags("away", away, "home", home, "pass", "pass_pg", "pass", PASS_MATCHUP_THRESHOLD)
+    flags += _matchup_advantage_flags("home", home, "away", away, "pass", "pass_pg", "pass", PASS_MATCHUP_THRESHOLD)
     return flags
 
 
@@ -192,7 +216,7 @@ def _turnover_margin_flags(side, ctx):
         f"— turnover margin is one of the least sticky season-over-season stats, a candidate to regress."
     )
     moniker = f"{name} turnover regression"
-    return [Flag("🔄", "Turnover margin", text, side, "side", abs(margin), TURNOVER_MARGIN_THRESHOLD, moniker)]
+    return [Flag("Turnover margin", text, side, "side", abs(margin), TURNOVER_MARGIN_THRESHOLD, moniker)]
 
 
 MID_DEF_RANK = 68  # roughly the median FBS defensive SP+ rank (~136 teams) — the sanity-check midpoint below
@@ -230,7 +254,7 @@ def _shootout_under_flags(conn, season, away, home):
         )
         if a_rank is not None and h_rank is not None:
             text += f" SP+ agrees: {away_name} #{a_rank} nat'l defense, {home_name} #{h_rank} nat'l."
-        return [Flag("🔥", "Two-directional: shootout", text, "both", "total", (a_gap + h_gap) / 2, SHOOTOUT_UNDER_THRESHOLD, "Shootout signal — two soft defenses", lean="over")]
+        return [Flag("Two-directional: shootout", text, "both", "total", (a_gap + h_gap) / 2, SHOOTOUT_UNDER_THRESHOLD, "Shootout signal — two soft defenses", lean="over")]
     if a_gap < -SHOOTOUT_UNDER_THRESHOLD and h_gap < -SHOOTOUT_UNDER_THRESHOLD:
         if (a_rank is not None and a_rank > MID_DEF_RANK) or (h_rank is not None and h_rank > MID_DEF_RANK):
             return []  # SP+ says at least one of these is actually a below-average defense
@@ -241,7 +265,7 @@ def _shootout_under_flags(conn, season, away, home):
         )
         if a_rank is not None and h_rank is not None:
             text += f" SP+ agrees: {away_name} #{a_rank} nat'l defense, {home_name} #{h_rank} nat'l."
-        return [Flag("🧊", "Two-directional: low-scoring", text, "both", "total", (abs(a_gap) + abs(h_gap)) / 2, SHOOTOUT_UNDER_THRESHOLD, "Low-scoring signal — two stout defenses", lean="under")]
+        return [Flag("Two-directional: low-scoring", text, "both", "total", (abs(a_gap) + abs(h_gap)) / 2, SHOOTOUT_UNDER_THRESHOLD, "Low-scoring signal — two stout defenses", lean="under")]
     return []
 
 
@@ -275,7 +299,7 @@ def _weather_flags(forecast):
         f"Forecast at kickoff: {conditions} ({forecast.get('short_forecast', '')}) "
         f"— conditions like this tend to suppress passing efficiency and total scoring."
     )
-    return [Flag("🌧", "Weather", text, "both", "total", strength, 5.0,
+    return [Flag("Weather", text, "both", "total", strength, 5.0,
                   "Weather could affect scoring", lean="under")]
 
 
@@ -293,7 +317,7 @@ def _coordinator_flags(conn, season, side, ctx):
         )
         moniker = f"{team_name} new {hire['role']}"
         strength = abs(pct - 50)
-        flags.append(Flag("🆕", f"New {hire['role']}", text, side, "side", strength, 10.0, moniker))
+        flags.append(Flag(f"New {hire['role']}", text, side, "side", strength, 10.0, moniker))
     return flags
 
 

@@ -13,7 +13,6 @@ import team_stats
 import sos
 import weather as weather_engine
 import lines as lines_engine
-import depth_chart
 import projections
 import rankings
 
@@ -292,7 +291,6 @@ def team_matchup_context(conn, team_id, season, opponent_team_id):
     ctx["passing"] = _top_players(conn, team_id, season, "passing")
     ctx["rushing"] = _top_players(conn, team_id, season, "rushing")
     ctx["receiving"] = _top_players(conn, team_id, season, "receiving")
-    ctx["depth_chart"] = depth_chart.team_depth_chart(conn, team_id, season)
     ctx["projections"] = projections.team_player_projections(conn, team_id, season, opponent_team_id)
     ctx["offense_ranks"] = {f: rankings.rank_badge(conn, season, "offense", f, ctx["offense"], ctx["sp_plus"]) for f in _RANK_FIELDS}
     ctx["defense_ranks"] = {f: rankings.rank_badge(conn, season, "defense", f, ctx["defense"], ctx["sp_plus"]) for f in _RANK_FIELDS}

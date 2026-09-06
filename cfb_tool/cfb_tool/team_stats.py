@@ -1,10 +1,9 @@
 """
 Current-season team-level offense/defense stats -- current year only, no
 prior-season blending or returning-production framing of any kind. A team
-with 0 games this season just shows no stats; depth_chart.py's "likely
-contributors" list is the thing to look at in that gap, and once real
-games are in the book, quality reads off this season's own numbers plus
-SOS/SP+ (sos.py) -- game by game, nothing carried over from last year.
+with 0 games this season just shows no stats -- quality reads off this
+season's own numbers plus SOS/SP+ (sos.py) and national rank (rankings.py),
+game by game, nothing carried over from last year.
 """
 
 

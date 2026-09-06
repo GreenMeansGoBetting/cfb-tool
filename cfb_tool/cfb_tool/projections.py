@@ -1,19 +1,46 @@
 """
-Rough, opponent-adjusted player projections for this week's matchup.
+Rough player projections for the single upcoming game -- never further out
+than that, and never blended with last season.
 
-Takes each side's current-season top producers (from player_season_stats)
-and adjusts their own per-game pace by how the upcoming opponent's defense
-has allowed that stat category so far, relative to the FBS average
-(same defense-allowed numbers team_stats.py already computes). It's a
-plain ratio against a real opponent number, not a calibrated model --
-always shown alongside the raw inputs (the player's own pace, the
-opponent's raw allowed number, the league average) so the adjustment is
-inspectable rather than a black box, in keeping with "state the tension,
-don't hand over a verdict."
+The naive version of this (an earlier pass) just averaged a player's own
+raw per-game stats and multiplied by the upcoming opponent's raw allowed
+number vs. the FBS average. Two problems with that, both schedule-strength
+illusions of the same kind flags.py already guards against elsewhere:
 
-Current-season only, game-by-game -- no prior-season blending of any kind.
+  1. The player's own history is itself a product of who they already
+     played. Julian Sayin's 320 pass yds/game "pace" is one game against
+     Ball State (a bad defense) -- taken at face value, it overstates what
+     he'd do against an average defense.
+  2. The upcoming opponent's raw allowed number has the same problem in
+     the other direction. Texas's raw pass yards allowed can look great
+     purely because Texas has played a soft schedule so far, not because
+     their pass defense is actually elite.
+
+Both get corrected the same way: instead of raw allowed yards, use the
+opponent's overall SP+ defensive rank (CFBD's own opponent-adjusted
+rating -- already the trusted signal flags.py leans on for the same
+reason) converted to a percentile, then to a symmetric multiplier via
+_matchup_factor(). That one function is applied twice --
+  - to each of the player's own past games (dividing out how tough/soft
+    THAT game's specific opponent was, producing a schedule-neutral
+    "vacuum pace"), and
+  - to the upcoming opponent (multiplying the vacuum pace back up or down
+    for how tough THIS matchup is).
+Using the same function both ways keeps it self-consistent and avoids
+inventing a second, uncalibrated formula.
+
+Real limitation, stated plainly rather than hidden: SP+ only rates a
+defense as a whole -- CFBD doesn't publish a rush-defense/pass-defense
+split -- so the matchup factor is one number applied to passing, rushing,
+and receiving alike. The category-specific raw allowed number is still
+shown alongside the projection for context, just not used as the
+adjustment's basis.
 """
+import sos
 import team_stats
+
+MIN_ADJUSTMENT = 0.6
+MAX_ADJUSTMENT = 1.6
 
 _CATEGORIES = {
     "passing":   {"label": "Passing",   "yards_col": "pass_yards", "td_col": "pass_td", "def_field": "pass_pg", "limit": 1},
@@ -21,37 +48,64 @@ _CATEGORIES = {
     "receiving": {"label": "Receiving", "yards_col": "rec_yards",  "td_col": "rec_td",  "def_field": "pass_pg", "limit": 3},
 }
 
-# A single opponent's raw allowed-per-game can be a small-sample outlier
-# early in the season -- clamp how far the adjustment can swing the
-# player's own pace so one soft/tough matchup a defense had doesn't
-# produce an absurd projection.
-MIN_ADJUSTMENT = 0.6
-MAX_ADJUSTMENT = 1.6
-
-_LEAGUE_AVG_CACHE = {}
+_FBS_COUNT_CACHE = {}
 
 
-def _league_avg_allowed(conn, season, def_field):
-    """FBS-wide average of a raw defense-allowed field (rush or pass
-    yards/game) -- the baseline an opponent's own allowed number gets
-    compared against to decide if this is a soft or tough matchup."""
+def _fbs_sp_plus_count(conn, season):
     token = conn.execute("SELECT value FROM meta WHERE key = 'last_updated'").fetchone()
-    key = (token["value"] if token else None, season, def_field)
-    if key in _LEAGUE_AVG_CACHE:
-        return _LEAGUE_AVG_CACHE[key]
-    column = {"rush_pg": "rush_yards", "pass_pg": "pass_yards"}[def_field]
-    row = conn.execute(
-        f"""SELECT AVG(opp.{column}) avg_allowed
-            FROM team_game_stats tgs
-            JOIN games g ON tgs.game_id = g.game_id
-            JOIN teams t ON tgs.team_id = t.team_id
-            JOIN team_game_stats opp ON opp.game_id = tgs.game_id AND opp.team_id != tgs.team_id
-            WHERE g.season = ? AND g.home_points IS NOT NULL AND t.classification = 'fbs'""",
-        (season,),
-    ).fetchone()
-    value = row["avg_allowed"] if row and row["avg_allowed"] is not None else None
-    _LEAGUE_AVG_CACHE[key] = value
-    return value
+    key = (token["value"] if token else None, season)
+    if key not in _FBS_COUNT_CACHE:
+        _FBS_COUNT_CACHE[key] = conn.execute(
+            """SELECT COUNT(*) FROM sp_plus_ratings sp JOIN teams t ON sp.team_id = t.team_id
+               WHERE sp.season = ? AND t.classification = 'fbs'""",
+            (season,),
+        ).fetchone()[0]
+    return _FBS_COUNT_CACHE[key]
+
+
+def _def_percentile(sp_plus, total_teams):
+    """1.0 = best defense in the country, 0.0 = worst. None if we don't
+    have an opponent-adjusted rank for this team yet."""
+    if not sp_plus or sp_plus["def_ranking"] is None or not total_teams:
+        return None
+    return 1 - (sp_plus["def_ranking"] - 1) / total_teams
+
+
+def _matchup_factor(percentile):
+    """percentile 1.0 (elite defense) -> MIN_ADJUSTMENT (suppresses production);
+    percentile 0.0 (worst defense) -> MAX_ADJUSTMENT (boosts it);
+    percentile 0.5 (average) -> 1.0 (no change)."""
+    if percentile is None:
+        return None
+    return MAX_ADJUSTMENT - percentile * (MAX_ADJUSTMENT - MIN_ADJUSTMENT)
+
+
+def _vacuum_pace(conn, player_id, season, category, yards_col, td_col, total_teams):
+    """Each of the player's own logged games this season, each divided by
+    that specific game's opponent-defense matchup factor -- so a player's
+    baseline pace reflects their own output adjusted for opponent quality,
+    not just whatever raw number a soft or tough matchup happened to produce."""
+    rows = conn.execute(
+        f"""SELECT pgs.{yards_col} yds, pgs.{td_col} td, pgs.team_id,
+                   g.home_team_id, g.away_team_id
+            FROM player_game_stats pgs
+            JOIN games g ON g.game_id = pgs.game_id
+            WHERE pgs.player_id = ? AND pgs.season = ? AND pgs.category = ?""",
+        (player_id, season, category),
+    ).fetchall()
+    if not rows:
+        return None
+    norm_yards, norm_td = [], []
+    for r in rows:
+        opp_id = r["away_team_id"] if r["team_id"] == r["home_team_id"] else r["home_team_id"]
+        factor = _matchup_factor(_def_percentile(sos.team_sp_plus(conn, opp_id, season), total_teams)) or 1.0
+        norm_yards.append((r["yds"] or 0) / factor)
+        norm_td.append((r["td"] or 0) / factor)
+    return {
+        "games": len(rows),
+        "vacuum_yards": sum(norm_yards) / len(norm_yards),
+        "vacuum_td": sum(norm_td) / len(norm_td),
+    }
 
 
 def _top_producers(conn, team_id, season, category, limit):
@@ -67,48 +121,35 @@ def _top_producers(conn, team_id, season, category, limit):
     return ranked[:limit]
 
 
-def _player_game_log(conn, player_id, season, category, yards_col, td_col):
-    row = conn.execute(
-        f"""SELECT COUNT(*) games, AVG({yards_col}) avg_yards, AVG({td_col}) avg_td
-            FROM player_game_stats
-            WHERE player_id = ? AND season = ? AND category = ?""",
-        (player_id, season, category),
-    ).fetchone()
-    games = row["games"] or 0
-    if games == 0:
-        return None
-    return {"games": games, "avg_yards": row["avg_yards"], "avg_td": row["avg_td"]}
-
-
 def team_player_projections(conn, team_id, season, opponent_team_id):
-    """One entry per key current-season producer who's actually logged a
-    game -- each with a rough opponent-adjusted yardage expectation,
-    always paired with the raw player pace and opponent/league numbers
-    the adjustment came from."""
+    """One entry per key current-season producer who's logged a game --
+    each with a schedule-neutral "vacuum" pace and a rough projection for
+    the single upcoming game against opponent_team_id. Never projects
+    beyond that one game."""
+    total_teams = _fbs_sp_plus_count(conn, season)
+    opp_sp_plus = sos.team_sp_plus(conn, opponent_team_id, season)
+    opp_factor = _matchup_factor(_def_percentile(opp_sp_plus, total_teams))
+    opp_defense = team_stats.team_defense_allowed(conn, opponent_team_id, season)
+
     results = []
     for category, cfg in _CATEGORIES.items():
         for (player_id, name), _stats in _top_producers(conn, team_id, season, category, cfg["limit"]):
-            log = _player_game_log(conn, player_id, season, category, cfg["yards_col"], cfg["td_col"])
-            if log is None:
+            vac = _vacuum_pace(conn, player_id, season, category, cfg["yards_col"], cfg["td_col"], total_teams)
+            if vac is None:
                 continue
-            opp_allowed = team_stats.team_defense_allowed(conn, opponent_team_id, season)[cfg["def_field"]]
-            league_avg = _league_avg_allowed(conn, season, cfg["def_field"])
             entry = {
                 "name": name,
                 "category": cfg["label"],
-                "avg_yards": log["avg_yards"],
-                "avg_td": log["avg_td"],
-                "games": log["games"],
-                "opponent_allowed_pg": opp_allowed,
-                "league_avg_allowed_pg": league_avg,
-                "adjustment": None,
+                "games": vac["games"],
+                "vacuum_yards": vac["vacuum_yards"],
+                "vacuum_td": vac["vacuum_td"],
+                "opponent_def_rank": opp_sp_plus["def_ranking"] if opp_sp_plus else None,
+                "opponent_allowed_pg": opp_defense.get(cfg["def_field"]),
                 "projected_yards": None,
                 "projected_td": None,
             }
-            if opp_allowed is not None and league_avg:
-                adjustment = max(MIN_ADJUSTMENT, min(MAX_ADJUSTMENT, opp_allowed / league_avg))
-                entry["adjustment"] = adjustment
-                entry["projected_yards"] = log["avg_yards"] * adjustment
-                entry["projected_td"] = log["avg_td"] * adjustment
+            if opp_factor is not None:
+                entry["projected_yards"] = vac["vacuum_yards"] * opp_factor
+                entry["projected_td"] = vac["vacuum_td"] * opp_factor
             results.append(entry)
     return results

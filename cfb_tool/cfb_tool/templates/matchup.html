@@ -33,49 +33,22 @@
   {%- endif -%}
 {%- endmacro %}
 
-{% macro depth_chart_section(dc) -%}
-  {% for pos in ['QB', 'RB', 'WR', 'TE'] %}
-    {% set d = dc[pos] %}
-    {% if d and (d.ranked or d.others) %}
-    <h3>{{ pos }}</h3>
-    {% if d.ranked %}
-    <table class="data-table player-table">
-      <tbody>
-      {% for r in d.ranked %}
-        <tr>
-          <td>{{ r.name }}{% if r.transferred_from %} <span class="transfer-tag">transfer, {{ r.transferred_from }}</span>{% endif %}</td>
-          <td>
-            {{ r.usage|round(0)|int }} {{ r.usage_label|lower }}{% if r.yards is not none %} &middot; {{ r.yards|round(0)|int }} yds{% endif %}{% if r.td is not none %} &middot; {{ r.td|round(0)|int }} TD{% endif %}
-            last season
-          </td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    {% endif %}
-    {% if d.others %}
-    <p class="muted depth-others">Other {{ pos }}s on the roster, no 2025 production here to rank by: {{ d.others|join(', ') }}</p>
-    {% endif %}
-    {% endif %}
-  {% endfor %}
-{%- endmacro %}
-
 {% macro projections_section(list, opp_school) -%}
   {% if list %}
   <h3>Next Game — Rough Projection vs. {{ opp_school }}</h3>
-  <p class="muted depth-chart-disclaimer">Each player's own current-season pace, adjusted by how {{ opp_school }}'s defense has allowed that stat category vs. the FBS average — a rough ratio, not a calibrated model. Raw numbers behind the adjustment shown alongside it.</p>
+  <p class="muted proj-disclaimer">"Vacuum pace" is each player's own current-season output, adjusted for how tough the opponents they've already faced were (via opponent-adjusted SP+, not raw stats) — then adjusted again for {{ opp_school }}'s own opponent-adjusted defensive rank. A rough ratio, not a calibrated model; SP+ doesn't split rush/pass so one factor applies to every category. Next game only.</p>
   <table class="data-table player-table projections-table">
-    <thead><tr><th>Player</th><th>Pace</th><th>GP</th><th>Projected vs. {{ opp_school }}</th></tr></thead>
+    <thead><tr><th>Player</th><th>Vacuum pace</th><th>GP</th><th>Projected vs. {{ opp_school }}</th></tr></thead>
     <tbody>
     {% for p in list %}
       <tr>
         <td>{{ p.name }} <span class="proj-category">({{ p.category }})</span></td>
-        <td>{{ p.avg_yards|round|int }} yds/gm{% if p.avg_td is not none %} &middot; {{ "%.1f"|format(p.avg_td) }} TD/gm{% endif %}</td>
+        <td>{{ p.vacuum_yards|round|int }} yds/gm{% if p.vacuum_td is not none %} &middot; {{ "%.1f"|format(p.vacuum_td) }} TD/gm{% endif %}</td>
         <td>{{ p.games }}</td>
         <td>
           {%- if p.projected_yards is not none -%}
             ~{{ p.projected_yards|round|int }} yds{% if p.projected_td is not none %} &middot; {{ "%.1f"|format(p.projected_td) }} TD{% endif %}
-            <span class="proj-basis">({{ opp_school }} allows {{ p.opponent_allowed_pg|round|int }}/gm here vs {{ p.league_avg_allowed_pg|round|int }} FBS avg)</span>
+            <span class="proj-basis">({{ opp_school }} defense: SP+ #{{ p.opponent_def_rank }} nat'l{% if p.opponent_allowed_pg is not none %}, {{ p.opponent_allowed_pg|round|int }} raw yds/gm allowed here{% endif %})</span>
           {%- else -%}—{%- endif -%}
         </td>
       </tr>
@@ -265,8 +238,6 @@
   <section class="players-col">
     <h2>{{ game.away_school }} Players</h2>
     {{ projections_section(away.projections, game.home_school) }}
-    <p class="muted depth-chart-disclaimer">Likely contributors — ranked by 2025 usage among players still on the roster, not an official depth chart (none exists publicly).</p>
-    {{ depth_chart_section(away.depth_chart) }}
     {% for label, rows in [("Passing", away.passing), ("Rushing", away.rushing), ("Receiving", away.receiving)] %}
       <h3>{{ label }}</h3>
       {{ player_stat_table(rows, label) }}
@@ -276,8 +247,6 @@
   <section class="players-col">
     <h2>{{ game.home_school }} Players</h2>
     {{ projections_section(home.projections, game.away_school) }}
-    <p class="muted depth-chart-disclaimer">Likely contributors — ranked by 2025 usage among players still on the roster, not an official depth chart (none exists publicly).</p>
-    {{ depth_chart_section(home.depth_chart) }}
     {% for label, rows in [("Passing", home.passing), ("Rushing", home.rushing), ("Receiving", home.receiving)] %}
       <h3>{{ label }}</h3>
       {{ player_stat_table(rows, label) }}

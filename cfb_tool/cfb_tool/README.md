@@ -37,12 +37,13 @@ python3 ingest.py --year 2026
 ```bash
 python3 ingest.py --year 2025
 ```
-The second one is last season's data, used only for the depth chart's
-usage rankings (a stand-in for "who's likely to play" before a team has
-current-season stats of its own) — takes a few minutes, the current-season
-pull is quicker. Everything else — stats, flags, SOS/SP+, player
-projections — is current-season only, game by game, with nothing carried
-over from last year.
+The second one is last season's data, used only so a coordinator who
+changed schools this year can carry their coaching history into the
+new-OC/DC tendency blend (see "The coordinator-tracking piece" below) —
+takes a few minutes, the current-season pull is quicker. Everything else —
+stats, flags, SOS/SP+, national rank badges, player projections — is
+current-season only, game by game, with nothing carried over from last
+year.
 
 **4. Start the site:**
 ```bash
@@ -92,8 +93,8 @@ updates the live site within a couple minutes.
 **Scope note:** the hosted static build only covers the *current* season
 (schedule, weekly overview, and every matchup page) — last season stays
 browsable only through the local `python app.py` version. Everything else
-(flags, model-vs-market gap, depth charts, etc.) is identical between the
-two; static hosting just means the season/week/flag-sensitivity controls
+(flags, model-vs-market gap, player projections, etc.) is identical
+between the two; static hosting just means the season/week/flag-sensitivity controls
 navigate between pre-built pages instead of hitting a live server.
 
 ## The coordinator-tracking piece (the TCU problem)
@@ -136,7 +137,7 @@ guessing.
 - **`app.py`** + **`templates/`** — the site, both for local dev and as the source the static build renders
 - **`build_static.py`** — renders the whole site to flat HTML for hosting
 - **`flags.py`** — the tension-point engine (tempo, matchup edges, turnover regression, weather, shootout/under, new-coordinator tendency)
-- **`team_stats.py`**, **`sos.py`**, **`lines.py`**, **`weather.py`**, **`depth_chart.py`**, **`coordinator.py`**, **`projections.py`** — one module per signal type the flag engine and matchup card draw on
+- **`team_stats.py`**, **`sos.py`**, **`rankings.py`**, **`lines.py`**, **`weather.py`**, **`coordinator.py`**, **`projections.py`** — one module per signal type the flag engine and matchup card draw on
 - **`data/coordinator_hires.csv`** + **`load_coordinators.py`** — hand-kept OC/DC tracking
 - **`compute_tendencies.py`** + **`blend.py`** — coordinator history blending
 - **`scripts/inspect_response.py`** — debug helper for when the API changes shape
